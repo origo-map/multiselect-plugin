@@ -1,2 +1,8 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Default line ending is set to LF
+*.js eol=lf
+*.html eol=lf
+*.css eol=lf
+*.scss eol=lf
+*.txt eol=lf
+*.json eol=lf
+*.md eol=lf
