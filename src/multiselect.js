@@ -40,7 +40,7 @@ const Multiselect = function Multiselect(options = {}) {
 
   const tools = Object.prototype.hasOwnProperty.call(options, 'tools') ? options.tools : ['click', 'box', 'circle', 'polygon', 'buffer', 'line'];
   const defaultTool = Object.prototype.hasOwnProperty.call(options, 'default') ? options.default : 'click';
-  const lineBufferFactor = Object.prototype.hasOwnProperty.call(options, 'lineBufferFactor') ? options.lineBufferFactor : 1;
+  const lineBufferFactor = Object.prototype.hasOwnProperty.call(options, 'lineBufferFactor') && options.lineBufferFactor >= 1 ? options.lineBufferFactor : 1;
   const clickSelection = tools.includes('click');
   const boxSelection = tools.includes('box');
   const circleSelection = tools.includes('circle');
