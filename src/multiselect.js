@@ -60,6 +60,42 @@ const Multiselect = function Multiselect(options = {}) {
     viewer.dispatch('toggleClickInteraction', detail);
   }
 
+  function getFeatureInfoForItems(allItems) {
+    const clientResult = [];
+    allItems.forEach((item) => {
+      const layers = viewer.getQueryableLayers();
+      const coordinate = item.getFeature().getGeometry().getCoordinates()[0];
+      const pixel = map.getPixelFromCoordinate(coordinate).map(x => Math.round(x));
+
+      const res = Origo.getFeatureInfo.getFeaturesFromRemote({
+        coordinate,
+        layers,
+        map,
+        pixel
+      }, viewer);
+      clientResult.push(res);
+    });
+
+    Promise.all(clientResult).then((items) => {
+      const newItems = items.map(item => item[0]);
+      if (newItems.length === 1) {
+        selectionManager.addOrHighlightItem(newItems[0]);
+      } else if (newItems.length > 1) {
+        selectionManager.addItems(newItems);
+      }
+    });
+  }
+
+  function checkInfoFormat(allItems) {
+    let hasTextHtml = false;
+    allItems.forEach((item) => {
+      if (item.getLayer().get('infoFormat') === 'text/html') {
+        hasTextHtml = true;
+      }
+    });
+    return hasTextHtml;
+  }
+
   function enableInteraction() {
     document.getElementById(multiselectButton.getId()).classList.add('active');
     if (clickSelection) {
@@ -295,9 +331,13 @@ const Multiselect = function Multiselect(options = {}) {
     // adding features got from wfs GetFeature
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding array of features for each layer.
-      data.forEach((items) => allItems = allItems.concat(items));
+      data.forEach((items) => { allItems = allItems.concat(items); });
 
-      if (allItems.length === 1) {
+      const infoFormatIsTextHtml = checkInfoFormat(allItems);
+
+      if (infoFormatIsTextHtml) {
+        getFeatureInfoForItems(allItems);
+      } else if (allItems.length === 1) {
         selectionManager.addOrHighlightItem(allItems[0]);
       } else if (allItems.length > 1) {
         selectionManager.addItems(allItems);
@@ -327,9 +367,13 @@ const Multiselect = function Multiselect(options = {}) {
     // adding features got from wfs GetFeature
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding arrays of features for each layer.
-      data.forEach((items) => allItems = allItems.concat(getItemsIntersectingGeometry(items, circle)));
+      data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, circle)); });
 
-      if (allItems.length === 1) {
+      const infoFormatIsTextHtml = checkInfoFormat(allItems);
+
+      if (infoFormatIsTextHtml) {
+        getFeatureInfoForItems(allItems);
+      } else if (allItems.length === 1) {
         selectionManager.addOrHighlightItem(allItems[0]);
       } else if (allItems.length > 1) {
         selectionManager.addItems(allItems);
@@ -355,9 +399,13 @@ const Multiselect = function Multiselect(options = {}) {
     // adding features got from wfs GetFeature
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding arrays of features for each layer.
-      data.forEach((items) => allItems = allItems.concat(getItemsIntersectingGeometry(items, polygon)));
+      data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, polygon)); });
 
-      if (allItems.length === 1) {
+      const infoFormatIsTextHtml = checkInfoFormat(allItems);
+
+      if (infoFormatIsTextHtml) {
+        getFeatureInfoForItems(allItems);
+      } else if (allItems.length === 1) {
         selectionManager.addOrHighlightItem(allItems[0]);
       } else if (allItems.length > 1) {
         selectionManager.addItems(allItems);
@@ -421,8 +469,13 @@ const Multiselect = function Multiselect(options = {}) {
     allItems = allItems.concat(getItemsIntersectingGeometry(results.selectedClientItems, line));
 
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
-      data.forEach((items) => allItems = allItems.concat(getItemsIntersectingGeometry(items, line)));
-      if (allItems.length === 1) {
+      data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, line)); });
+
+      const infoFormatIsTextHtml = checkInfoFormat(allItems);
+
+      if (infoFormatIsTextHtml) {
+        getFeatureInfoForItems(allItems);
+      } else if (allItems.length === 1) {
         selectionManager.addOrHighlightItem(allItems[0]);
       } else if (allItems.length > 1) {
         selectionManager.addItems(allItems);
@@ -529,9 +582,13 @@ const Multiselect = function Multiselect(options = {}) {
     // adding features got from wfs GetFeature
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding arrays of features for each layer.
-      data.forEach((items) => allItems = allItems.concat(getItemsIntersectingGeometry(items, bufferedGeometry)));
+      data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, bufferedGeometry)); });
 
-      if (allItems.length === 1) {
+      const infoFormatIsTextHtml = checkInfoFormat(allItems);
+
+      if (infoFormatIsTextHtml) {
+        getFeatureInfoForItems(allItems);
+      } else if (allItems.length === 1) {
         selectionManager.addOrHighlightItem(allItems[0]);
       } else if (allItems.length > 1) {
         selectionManager.addItems(allItems);
