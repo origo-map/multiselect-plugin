@@ -127,9 +127,8 @@ const Multiselect = function Multiselect(options = {}) {
     });
 
     Promise.all(clientResult).then((items) => {
-      items = filterItems(items);
-
-      if (items.length > 0) {
+      if (typeof items !== 'undefined' && items.length > 0) {
+        items = filterItems(items);
         if (items.length === 1) {
           selectionManager.addOrHighlightItem(items[0]);
         } else if (items.length > 1) {
