@@ -369,6 +369,7 @@ const Multiselect = function Multiselect(options = {}) {
 
   function fetchFeatures_Box(evt) {
     const extent = evt.feature.getGeometry().getExtent();
+    const box = evt.feature.getGeometry();
     const layers = viewer.getQueryableLayers();
 
     if (layers.length < 1) {
@@ -378,12 +379,12 @@ const Multiselect = function Multiselect(options = {}) {
     let allItems = [];
     const results = getItemsIntersectingExtent(layers, extent);
     // adding cleint features
-    allItems = allItems.concat(results.selectedClientItems);
+    allItems = allItems.concat(getItemsIntersectingGeometry(results.selectedClientItems, box));
 
     // adding features got from wfs GetFeature
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding array of features for each layer.
-      data.forEach((items) => { allItems = allItems.concat(items); });
+      data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, box)); });
 
       const infoFormatIsTextHtml = checkInfoFormat(allItems);
 
