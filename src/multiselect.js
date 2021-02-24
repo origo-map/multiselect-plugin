@@ -93,6 +93,23 @@ const Multiselect = function Multiselect(options = {}) {
     return center;
   }
 
+  function filterItems(items) {
+    let newItems = [];
+
+    items.forEach((item) => {
+      if (item.length === 1) {
+        newItems.push(item[0]);
+      }
+      else if (item.length > 1) {
+        item.forEach((innerItem) => {
+          newItems.push(innerItem);
+        });
+      }
+    });
+
+    return newItems;
+  }
+
   function getFeatureInfoForItems(allItems) {
     const clientResult = [];
     allItems.forEach((item) => {
@@ -110,12 +127,13 @@ const Multiselect = function Multiselect(options = {}) {
     });
 
     Promise.all(clientResult).then((items) => {
-      if (items[0].length > 0) {
-        const newItems = items.map(item => item[0]);
-        if (newItems.length === 1) {
-          selectionManager.addOrHighlightItem(newItems[0]);
-        } else if (newItems.length > 1) {
-          selectionManager.addItems(newItems);
+      items = filterItems(items);
+
+      if (items.length > 0) {
+        if (items.length === 1) {
+          selectionManager.addOrHighlightItem(items[0]);
+        } else if (items.length > 1) {
+          selectionManager.addItems(items);
         }
       }
     });
