@@ -60,11 +60,44 @@ const Multiselect = function Multiselect(options = {}) {
     viewer.dispatch('toggleClickInteraction', detail);
   }
 
+  function getCenter(geometryIn) {
+    const geometry = geometryIn.clone();
+    const type = geometry.getType();
+
+    let center;
+    switch (type) {
+      case 'Polygon':
+        center = geometry.getInteriorPoint().getCoordinates();
+        break;
+      case 'MultiPolygon':
+        center = geometry.getInteriorPoints().getCoordinates()[0];
+        break;
+      case 'Point':
+        center = geometry.getCoordinates();
+        break;
+      case 'MultiPoint': // Modified for EK, case of undefined
+        center = geometry[0] ? geometry[0].getCoordinates() : geometry.getFirstCoordinate();
+        break;
+      case 'LineString':
+        center = geometry.getCoordinateAt(0.5);
+        break;
+      case 'MultiLineString':
+        center = geometry.getLineStrings()[0].getCoordinateAt(0.5);
+        break;
+      case 'Circle':
+        center = geometry.getCenter();
+        break;
+      default:
+        center = undefined;
+    }
+    return center;
+  }
+
   function getFeatureInfoForItems(allItems) {
     const clientResult = [];
     allItems.forEach((item) => {
       const layers = viewer.getQueryableLayers();
-      const coordinate = item.getFeature().getGeometry().getCoordinates()[0];
+      const coordinate = getCenter(item.getFeature().getGeometry());
       const pixel = map.getPixelFromCoordinate(coordinate).map(x => Math.round(x));
 
       const res = Origo.getFeatureInfo.getFeaturesFromRemote({
@@ -77,11 +110,13 @@ const Multiselect = function Multiselect(options = {}) {
     });
 
     Promise.all(clientResult).then((items) => {
-      const newItems = items.map(item => item[0]);
-      if (newItems.length === 1) {
-        selectionManager.addOrHighlightItem(newItems[0]);
-      } else if (newItems.length > 1) {
-        selectionManager.addItems(newItems);
+      if (items[0].length > 0) {
+        const newItems = items.map(item => item[0]);
+        if (newItems.length === 1) {
+          selectionManager.addOrHighlightItem(newItems[0]);
+        } else if (newItems.length > 1) {
+          selectionManager.addItems(newItems);
+        }
       }
     });
   }
