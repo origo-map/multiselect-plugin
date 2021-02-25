@@ -62,10 +62,10 @@ const Multiselect = function Multiselect(options = {}) {
 
   function getCenter(geometryIn) {
     const geometry = geometryIn.clone();
-    const type = geometry.getType();
+    const geomType = geometry.getType();
 
     let center;
-    switch (type) {
+    switch (geomType) {
       case 'Polygon':
         center = geometry.getInteriorPoint().getCoordinates();
         break;
@@ -93,21 +93,65 @@ const Multiselect = function Multiselect(options = {}) {
     return center;
   }
 
+  function cleanItem(item) {
+    const tempItem = item.getFeature().getProperties();
+    if (tempItem.geometry) { delete tempItem.geometry; }
+    if (tempItem.textHtml) { delete tempItem.textHtml; }
+    return JSON.stringify(tempItem);
+  }
+
   function filterItems(items) {
-    let newItems = [];
+    const newItems = [];
+    const tempItems = [];
 
     items.forEach((item) => {
       if (item.length === 1) {
-        newItems.push(item[0]);
-      }
-      else if (item.length > 1) {
+        const tempItem = cleanItem(item[0]);
+
+        if (!tempItems.includes(tempItem)) {
+          tempItems.push(tempItem);
+          newItems.push(item[0]);
+        }
+      } else if (item.length > 1) {
         item.forEach((innerItem) => {
-          newItems.push(innerItem);
+          const tempItem = cleanItem(innerItem);
+
+          if (!tempItems.includes(tempItem)) {
+            tempItems.push(tempItem);
+            newItems.push(innerItem);
+          }
         });
       }
     });
 
     return newItems;
+  }
+
+  function checkForExistingSelection(items) {
+    const tempSelectedItems = [];
+    const notAlreadySelectedItems = [];
+
+    items.forEach((item) => {
+      const selectionGroup = item.getSelectionGroup();
+      const selectedItems = selectionManager.getSelectedItemsForASelectionGroup(selectionGroup);
+      const tempItem = cleanItem(item);
+
+      if (selectedItems.length > 0) {
+        selectedItems.forEach((selectedItem) => {
+          const tempSelectedItem = cleanItem(selectedItem);
+
+          if (!tempSelectedItems.includes(tempSelectedItem)) {
+            tempSelectedItems.push(tempSelectedItem);
+          }
+        });
+      }
+
+      if (!tempSelectedItems.includes(tempItem)) {
+        notAlreadySelectedItems.push(item);
+      }
+    });
+
+    return notAlreadySelectedItems;
   }
 
   function getFeatureInfoForItems(allItems) {
@@ -128,11 +172,12 @@ const Multiselect = function Multiselect(options = {}) {
 
     Promise.all(clientResult).then((items) => {
       if (typeof items !== 'undefined' && items.length > 0) {
-        items = filterItems(items);
-        if (items.length === 1) {
-          selectionManager.addOrHighlightItem(items[0]);
-        } else if (items.length > 1) {
-          selectionManager.addItems(items);
+        const newItems = checkForExistingSelection(filterItems(items));
+
+        if (newItems.length === 1) {
+          selectionManager.addOrHighlightItem(newItems[0]);
+        } else if (newItems.length > 1) {
+          selectionManager.addItems(newItems);
         }
       }
     });
