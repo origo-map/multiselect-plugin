@@ -10,6 +10,7 @@ const Multiselect = function Multiselect(options = {}) {
   let circleInteraction;
   let polygonInteraction;
   let bufferInteraction;
+  let lineInteraction;
   let sketch;
   let radius;
   let radiusXPosition;
@@ -29,6 +30,7 @@ const Multiselect = function Multiselect(options = {}) {
   let boxSelectionButton;
   let circleSelectionButton;
   let bufferSelectionButton;
+  let lineSelectionButton;
   let target;
   let multiselectElement;
   let selectionManager;
@@ -36,13 +38,15 @@ const Multiselect = function Multiselect(options = {}) {
   const clusterFeatureinfoLevel = 1;
   const hitTolerance = 0;
 
-  const tools = Object.prototype.hasOwnProperty.call(options, 'tools') ? options.tools : ['click', 'box', 'circle', 'polygon', 'buffer'];
+  const tools = Object.prototype.hasOwnProperty.call(options, 'tools') ? options.tools : ['click', 'box', 'circle', 'polygon', 'buffer', 'line'];
   const defaultTool = Object.prototype.hasOwnProperty.call(options, 'default') ? options.default : 'click';
+  const lineBufferFactor = Object.prototype.hasOwnProperty.call(options, 'lineBufferFactor') && options.lineBufferFactor >= 1 ? options.lineBufferFactor : 1;
   const clickSelection = tools.includes('click');
   const boxSelection = tools.includes('box');
   const circleSelection = tools.includes('circle');
   const polygonSelection = tools.includes('polygon');
   const bufferSelection = tools.includes('buffer');
+  const lineSelection = tools.includes('line');
 
   function setActive(state) {
     isActive = state;
@@ -73,6 +77,9 @@ const Multiselect = function Multiselect(options = {}) {
     if (bufferSelection) {
       document.getElementById(bufferSelectionButton.getId()).classList.remove('hidden');
     }
+    if (lineSelection) {
+      document.getElementById(lineSelectionButton.getId()).classList.remove('hidden');
+    }
     document.getElementById(multiselectButton.getId()).classList.remove('tooltip');
     setActive(true);
     addInteractions();
@@ -100,6 +107,9 @@ const Multiselect = function Multiselect(options = {}) {
     }
     if (bufferSelection) {
       document.getElementById(bufferSelectionButton.getId()).classList.add('hidden');
+    }
+    if (lineSelection) {
+      document.getElementById(lineSelectionButton.getId()).classList.add('hidden');
     }
     document.getElementById(multiselectButton.getId()).classList.add('tooltip');
 
@@ -135,11 +145,17 @@ const Multiselect = function Multiselect(options = {}) {
       handleEvent: fetchFeatures_Buffer_click
     });
 
+    lineInteraction = new Origo.ol.interaction.Draw({
+      source: selectSource,
+      type: 'LineString'
+    });
+
     map.addInteraction(clickInteraction);
     map.addInteraction(boxInteraction);
     map.addInteraction(circleInteraction);
     map.addInteraction(polygonInteraction);
     map.addInteraction(bufferInteraction);
+    map.addInteraction(lineInteraction);
 
     boxInteraction.on('drawend', fetchFeatures_Box);
     circleInteraction.on('drawstart', (evt) => {
@@ -149,6 +165,8 @@ const Multiselect = function Multiselect(options = {}) {
     circleInteraction.on('drawend', fetchFeatures_Circle);
     polygonInteraction.on('drawstart', (evt) => { });
     polygonInteraction.on('drawend', fetchFeatures_Polygon);
+    lineInteraction.on('drawstart', () => { });
+    lineInteraction.on('drawend', fetchFeatures_LineString);
   }
 
   function toggleType(button) {
@@ -165,6 +183,7 @@ const Multiselect = function Multiselect(options = {}) {
       circleInteraction.setActive(false);
       polygonInteraction.setActive(false);
       bufferInteraction.setActive(false);
+      lineInteraction.setActive(false);
       map.un('pointermove', pointerMoveHandler);
     } else if (type === 'box') {
       clickInteraction.setActive(false);
@@ -172,6 +191,7 @@ const Multiselect = function Multiselect(options = {}) {
       circleInteraction.setActive(false);
       polygonInteraction.setActive(false);
       bufferInteraction.setActive(false);
+      lineInteraction.setActive(false);
       map.un('pointermove', pointerMoveHandler);
     } else if (type === 'circle') {
       clickInteraction.setActive(false);
@@ -179,6 +199,7 @@ const Multiselect = function Multiselect(options = {}) {
       circleInteraction.setActive(true);
       polygonInteraction.setActive(false);
       bufferInteraction.setActive(false);
+      lineInteraction.setActive(false);
       map.on('pointermove', pointerMoveHandler);
     } else if (type === 'polygon') {
       clickInteraction.setActive(false);
@@ -186,6 +207,7 @@ const Multiselect = function Multiselect(options = {}) {
       circleInteraction.setActive(false);
       polygonInteraction.setActive(true);
       bufferInteraction.setActive(false);
+      lineInteraction.setActive(false);
       map.un('pointermove', pointerMoveHandler);
     } else if (type === 'buffer') {
       clickInteraction.setActive(false);
@@ -193,6 +215,15 @@ const Multiselect = function Multiselect(options = {}) {
       circleInteraction.setActive(false);
       polygonInteraction.setActive(false);
       bufferInteraction.setActive(true);
+      lineInteraction.setActive(false);
+      map.un('pointermove', pointerMoveHandler);
+    } else if (type === 'line') {
+      clickInteraction.setActive(false);
+      boxInteraction.setActive(false);
+      circleInteraction.setActive(false);
+      polygonInteraction.setActive(false);
+      bufferInteraction.setActive(false);
+      lineInteraction.setActive(true);
       map.un('pointermove', pointerMoveHandler);
     }
   }
@@ -203,6 +234,7 @@ const Multiselect = function Multiselect(options = {}) {
     map.removeInteraction(circleInteraction);
     map.removeInteraction(polygonInteraction);
     map.removeInteraction(bufferInteraction);
+    map.removeInteraction(lineInteraction);
   }
 
   function fetchFeatures_Click(evt) {
@@ -378,6 +410,30 @@ const Multiselect = function Multiselect(options = {}) {
     return true;
   }
 
+  function fetchFeatures_LineString(evt) {
+    const line = evt.feature.getGeometry();
+    const extent = line.getExtent();
+    const layers = viewer.getQueryableLayers();
+
+    let allItems = [];
+    const results = getItemsIntersectingExtent(layers, extent);
+
+    allItems = allItems.concat(getItemsIntersectingGeometry(results.selectedClientItems, line));
+
+    Promise.all(results.selectedRemoteItemsPromises).then((data) => {
+      data.forEach((items) => allItems = allItems.concat(getItemsIntersectingGeometry(items, line)));
+      if (allItems.length === 1) {
+        selectionManager.addOrHighlightItem(allItems[0]);
+      } else if (allItems.length > 1) {
+        selectionManager.addItems(allItems);
+      }
+    });
+
+    // Uncomment this to draw the extent on the map for debugging porposes
+    // const f = new Feature(fromExtent(extent));
+    // debugLayer.addFeature(f);
+  }
+
   function createFeatureSelectionModal(items) {
     // extracting features
     const features = items.map((item) => item.getFeature());
@@ -487,7 +543,6 @@ const Multiselect = function Multiselect(options = {}) {
   function createBufferedFeature(geometry, radius) {
     const format = new Origo.ol.format.GeoJSON();
     const projection = map.getView().getProjection();
-console.log(geometry);
     let turfGeometry;
 
     if (geometry.getType() === 'Circle') {
@@ -506,8 +561,8 @@ console.log(geometry);
     bufferedOLFeature.getGeometry().transform('EPSG:4326', projection);
 
     // Uncomment this to draw the geometry for debugging puposes.
-    const f = bufferedOLFeature.clone();
-    debugLayer.addFeature(f);
+    // const f = bufferedOLFeature.clone();
+    // debugLayer.addFeature(f);
 
     return bufferedOLFeature.clone();
   }
@@ -590,6 +645,7 @@ console.log(geometry);
 
     const format = new Origo.ol.format.GeoJSON();
     const projection = map.getView().getProjection();
+    const resolution = map.getView().getResolution();
     let turfGeometry;
 
     if (geometry.getType() === 'Circle') {
@@ -597,6 +653,10 @@ console.log(geometry);
       const polygon = Origo.ol.geom.Polygon.fromCircle(geometry);
       polygon.transform(projection, 'EPSG:4326');
       turfGeometry = format.writeGeometryObject(polygon);
+    } else if (geometry.getType() === 'LineString') {
+      const line = createBufferedFeature(geometry, resolution * lineBufferFactor).getGeometry();
+      line.transform(projection, 'EPSG:4326');
+      turfGeometry = format.writeGeometryObject(line);
     } else {
       geometry.transform(projection, 'EPSG:4326');
       turfGeometry = format.writeGeometryObject(geometry);
@@ -635,7 +695,7 @@ console.log(geometry);
         const selectedRemoteItems = data.map((feature) => new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle));
         resolve(selectedRemoteItems);
       })
-        .catch((err) => console.error(err));
+        .catch((err) => { console.error(err); });
     }));
   }
 
@@ -709,7 +769,7 @@ console.log(geometry);
 
         if (boxSelection) {
           boxSelectionButton = Origo.ui.Button({
-			  // o-home-in padding-small icon-smaller round light box-shadow o-tooltip
+            // o-home-in padding-small icon-smaller round light box-shadow o-tooltip
             cls: 'o-multiselect-box padding-small margin-bottom-smaller icon-smaller round light box-shadow hidden',
             click() {
               type = 'box';
@@ -765,6 +825,20 @@ console.log(geometry);
           buttons.push(bufferSelectionButton);
         }
 
+        if (lineSelection) {
+          lineSelectionButton = Origo.ui.Button({
+            cls: 'o-multiselect-line padding-small margin-bottom-smaller icon-smaller round light box-shadow hidden',
+            click() {
+              type = 'line';
+              toggleType(this);
+            },
+            icon: '#fa-minus',
+            tooltipText: 'Linje',
+            tooltipPlacement: 'east'
+          });
+          buttons.push(lineSelectionButton);
+        }
+
         if (defaultTool === 'click') {
           defaultButton = clickSelectionButton;
         } else if (defaultTool === 'box') {
@@ -775,6 +849,8 @@ console.log(geometry);
           defaultButton = polygonSelectionButton;
         } else if (defaultTool === 'buffer') {
           defaultButton = bufferSelectionButton;
+        } else if (defaultTool === 'line') {
+          defaultButton = lineSelectionButton;
         }
       }
     },
@@ -786,7 +862,7 @@ console.log(geometry);
       // source object to hold drawn features that mark an area to select features from
       // Draw Interaction does not need a layer, only a source is enough for it to work.
       selectSource = new Origo.ol.source.Vector();
-	  const Style = Origo.ol.style;
+      const Style = Origo.ol.style;
 
       const debugStyle = [
         /* We are using two different styles:
@@ -828,7 +904,7 @@ console.log(geometry);
     },
     render() {
       let htmlString = `${multiselectElement.render()}`;
-	  const dom = Origo.ui.dom;
+      const dom = Origo.ui.dom;
       let el = dom.html(htmlString);
       document.getElementById(target).appendChild(el);
 
@@ -851,13 +927,18 @@ console.log(geometry);
         el = dom.html(htmlString);
         document.getElementById(multiselectElement.getId()).appendChild(el);
       }
-	  if (polygonSelection) {
+      if (polygonSelection) {
         htmlString = polygonSelectionButton.render();
         el = dom.html(htmlString);
         document.getElementById(multiselectElement.getId()).appendChild(el);
       }
       if (bufferSelection) {
         htmlString = bufferSelectionButton.render();
+        el = dom.html(htmlString);
+        document.getElementById(multiselectElement.getId()).appendChild(el);
+      }
+      if (lineSelection) {
+        htmlString = lineSelectionButton.render();
         el = dom.html(htmlString);
         document.getElementById(multiselectElement.getId()).appendChild(el);
       }
