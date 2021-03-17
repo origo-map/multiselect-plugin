@@ -97,6 +97,7 @@ const Multiselect = function Multiselect(options = {}) {
     const tempItem = item.getFeature().getProperties();
     if (tempItem.geometry) { delete tempItem.geometry; }
     if (tempItem.textHtml) { delete tempItem.textHtml; }
+    if (tempItem.geom) { delete tempItem.geom; }
     return JSON.stringify(tempItem);
   }
 
@@ -105,12 +106,13 @@ const Multiselect = function Multiselect(options = {}) {
     const tempItems = [];
 
     items.forEach((item) => {
-      if (item.length === 1) {
-        const tempItem = cleanItem(item[0]);
+      const isWfsFeature = typeof item.length === 'undefined';
+      if (item.length === 1 || isWfsFeature) {
+        const tempItem = cleanItem(isWfsFeature ? item : item[0]);
 
         if (!tempItems.includes(tempItem)) {
           tempItems.push(tempItem);
-          newItems.push(item[0]);
+          newItems.push(isWfsFeature ? item : item[0]);
         }
       } else if (item.length > 1) {
         item.forEach((innerItem) => {
@@ -191,6 +193,32 @@ const Multiselect = function Multiselect(options = {}) {
       }
     });
     return hasTextHtml;
+  }
+
+  function checkLayerParam(allItems, param, value) {
+    let hasParam = false;
+    allItems.forEach((item) => {
+      if (item.getLayer().get(param) === value) {
+        hasParam = true;
+      }
+    });
+    return hasParam;
+  }
+
+  function addItemsToSelection(allItems) {
+    const infoFormatIsTextHtml = checkInfoFormat(allItems);
+    const isWfsLayer = checkLayerParam(allItems, 'type', 'WFS');
+
+    if (infoFormatIsTextHtml && !isWfsLayer) {
+      getFeatureInfoForItems(allItems);
+    } else {
+      const newItems = checkForExistingSelection(filterItems(allItems));
+      if (newItems.length === 1) {
+        selectionManager.addOrHighlightItem(newItems[0]);
+      } else if (newItems.length > 1) {
+        selectionManager.addItems(newItems);
+      }
+    }
   }
 
   function enableInteraction() {
@@ -430,16 +458,7 @@ const Multiselect = function Multiselect(options = {}) {
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding array of features for each layer.
       data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, box)); });
-
-      const infoFormatIsTextHtml = checkInfoFormat(allItems);
-
-      if (infoFormatIsTextHtml) {
-        getFeatureInfoForItems(allItems);
-      } else if (allItems.length === 1) {
-        selectionManager.addOrHighlightItem(allItems[0]);
-      } else if (allItems.length > 1) {
-        selectionManager.addItems(allItems);
-      }
+      addItemsToSelection(allItems);
     }).catch((err) => console.error(err));
   }
 
@@ -466,16 +485,7 @@ const Multiselect = function Multiselect(options = {}) {
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding arrays of features for each layer.
       data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, circle)); });
-
-      const infoFormatIsTextHtml = checkInfoFormat(allItems);
-
-      if (infoFormatIsTextHtml) {
-        getFeatureInfoForItems(allItems);
-      } else if (allItems.length === 1) {
-        selectionManager.addOrHighlightItem(allItems[0]);
-      } else if (allItems.length > 1) {
-        selectionManager.addItems(allItems);
-      }
+      addItemsToSelection(allItems);
     });
 
     // Uncomment this to draw the extent on the map for debugging porposes
@@ -498,16 +508,7 @@ const Multiselect = function Multiselect(options = {}) {
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding arrays of features for each layer.
       data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, polygon)); });
-
-      const infoFormatIsTextHtml = checkInfoFormat(allItems);
-
-      if (infoFormatIsTextHtml) {
-        getFeatureInfoForItems(allItems);
-      } else if (allItems.length === 1) {
-        selectionManager.addOrHighlightItem(allItems[0]);
-      } else if (allItems.length > 1) {
-        selectionManager.addItems(allItems);
-      }
+      addItemsToSelection(allItems);
     });
 
     // Uncomment this to draw the extent on the map for debugging porposes
@@ -568,16 +569,7 @@ const Multiselect = function Multiselect(options = {}) {
 
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, line)); });
-
-      const infoFormatIsTextHtml = checkInfoFormat(allItems);
-
-      if (infoFormatIsTextHtml) {
-        getFeatureInfoForItems(allItems);
-      } else if (allItems.length === 1) {
-        selectionManager.addOrHighlightItem(allItems[0]);
-      } else if (allItems.length > 1) {
-        selectionManager.addItems(allItems);
-      }
+      addItemsToSelection(allItems);
     });
 
     // Uncomment this to draw the extent on the map for debugging porposes
@@ -761,6 +753,10 @@ const Multiselect = function Multiselect(options = {}) {
 
     function shouldSkipLayer(layer) {
       if (!layer.get('queryable')) {
+        return true;
+      }
+
+      if (layer.get('ArcGIS')) {
         return true;
       }
 
