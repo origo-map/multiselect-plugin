@@ -98,6 +98,7 @@ const Multiselect = function Multiselect(options = {}) {
     if (tempItem.geometry) { delete tempItem.geometry; }
     if (tempItem.textHtml) { delete tempItem.textHtml; }
     if (tempItem.geom) { delete tempItem.geom; }
+    if (tempItem.state) { delete tempItem.state; }
     return JSON.stringify(tempItem);
   }
 
@@ -428,10 +429,8 @@ const Multiselect = function Multiselect(options = {}) {
               if (result.length > 0) {
                 selectionManager.removeItems(result);
               }
-            } else if (result.length === 1) {
-              selectionManager.addOrHighlightItem(result[0]);
-            } else if (result.length > 1) {
-              selectionManager.addItems(result);
+            } else {
+              addItemsToSelection(result);
             }
           });
       }
@@ -673,16 +672,7 @@ const Multiselect = function Multiselect(options = {}) {
     Promise.all(results.selectedRemoteItemsPromises).then((data) => {
       // data is an array containing corresponding arrays of features for each layer.
       data.forEach((items) => { allItems = allItems.concat(getItemsIntersectingGeometry(items, bufferedGeometry)); });
-
-      const infoFormatIsTextHtml = checkInfoFormat(allItems);
-
-      if (infoFormatIsTextHtml) {
-        getFeatureInfoForItems(allItems);
-      } else if (allItems.length === 1) {
-        selectionManager.addOrHighlightItem(allItems[0]);
-      } else if (allItems.length > 1) {
-        selectionManager.addItems(allItems);
-      }
+      addItemsToSelection(allItems);
     });
   }
 

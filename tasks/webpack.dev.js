@@ -4,7 +4,7 @@ const WriteFilePlugin = require('write-file-webpack-plugin');
 
 module.exports = merge(common, {
   output: {
-    path: `${__dirname}/../../origo/plugins`,
+    path: `${__dirname}/../../../EK-extern/plugins`,
     publicPath: '/build/js',
     filename: 'multiselect.js',
     libraryTarget: 'var',
