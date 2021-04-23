@@ -888,7 +888,7 @@ const Multiselect = function Multiselect(options = {}) {
             toggleMultiselection();
           },
           icon: '#baseline-select-all-24px',
-          tooltipText: 'Markera i kartan',
+          tooltipText: 'Multiselektering',
           tooltipPlacement: 'east'
         });
         buttons.push(multiselectButton);
