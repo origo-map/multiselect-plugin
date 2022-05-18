@@ -1,6 +1,7 @@
 ﻿import Origo from 'Origo';
 import buffer from '@turf/buffer';
 import disjoint from '@turf/boolean-disjoint';
+import * as defaultstyles from './defaultstyles';
 
 const Multiselect = function Multiselect(options = {}) {
   let selectSource;
@@ -35,6 +36,11 @@ const Multiselect = function Multiselect(options = {}) {
   let target;
   let multiselectElement;
   let selectionManager;
+  /** name of symbol in origo configuration */
+  let bufferSymbol;
+  /** name of symbol in origo configuration */
+  let chooseSymbol;
+  
   const buttons = [];
   const clusterFeatureinfoLevel = 1;
   const hitTolerance = 0;
@@ -272,11 +278,6 @@ const Multiselect = function Multiselect(options = {}) {
 
     const geometry = evt.feature.getGeometry();
     updateSelectionManager(geometry);
-
-
-    // Uncomment this to draw the extent on the map for debugging porposes
-    // const f = new Feature(fromExtent(extent));
-    // debugLayer.addFeature(f);
   }
 
   /**
@@ -286,11 +287,6 @@ const Multiselect = function Multiselect(options = {}) {
   function fetchFeatures_Polygon(evt) {
     const geometry = evt.feature.getGeometry();
     updateSelectionManager(geometry);
-
-
-    // Uncomment this to draw the extent on the map for debugging porposes
-    // const f = new Feature(fromExtent(extent));
-    // debugLayer.addFeature(f);
   }
 
   /**
@@ -348,19 +344,12 @@ const Multiselect = function Multiselect(options = {}) {
     // Buffer the line to make it possible to hit points with a line
     const bufferedGeometry = createBufferedFeature(geometry, resolution * lineBufferFactor).getGeometry();
     updateSelectionManager(bufferedGeometry);
-
-    // Uncomment this to draw the extent on the map for debugging porposes
-    // const f = new Feature(fromExtent(extent));
-    // debugLayer.addFeature(f);
   }
 
-  function displayTemporaryFeature(feature) {
+  function displayTemporaryFeature(feature, style) {
     const f = feature.clone();
-    //if (f.getGeometry().getType() === 'Point' || f.getGeometry().getType() === 'MultiPoint') {
-    //  f.setStyle(highlightStylePoint);
-    //} else {
-    //  f.setStyle(highlightStyle);
-    //}
+
+    f.setStyle(style);
     temporaryLayer.addFeature(f);
   }
 
@@ -408,7 +397,7 @@ const Multiselect = function Multiselect(options = {}) {
         });
         f.addEventListener('mouseover', function() {
           const hoverFeature = features.find((ff) => ff.getId().toString() === this.id).clone();
-          displayTemporaryFeature(hoverFeature);
+          displayTemporaryFeature(hoverFeature, chooseSymbol);
          
         });
         f.addEventListener('mouseout', function () {
@@ -508,14 +497,9 @@ const Multiselect = function Multiselect(options = {}) {
   function fetchFeatures_Buffer_buffer(radius) {
     const geometry = bufferFeature.getGeometry();
     const bufferedFeature = createBufferedFeature(geometry, radius);
-    displayTemporaryFeature(bufferedFeature);
+    displayTemporaryFeature(bufferedFeature, bufferSymbol);
 
     const bufferedGeometry = bufferedFeature.getGeometry();
-
-    // Uncomment this to draw the extent of the buffer on the map for debugging porposes
-    // const f = new Feature(fromExtent(extent));
-    // debugLayer.addFeature(f);
-
     updateSelectionManager(bufferedGeometry);
   }
 
@@ -549,10 +533,6 @@ const Multiselect = function Multiselect(options = {}) {
     const bufferedTurfFeature = buffer(turfGeometry, radius / 1000, { units: 'kilometers' });
     const bufferedOLFeature = format.readFeature(bufferedTurfFeature);
     bufferedOLFeature.getGeometry().transform('EPSG:4326', projection);
-
-    // Uncomment this to draw the geometry for debugging puposes.
-    //const f = bufferedOLFeature.clone();
-    //debugLayer.addFeature(f);
 
     return bufferedOLFeature;
   }
@@ -735,15 +715,6 @@ const Multiselect = function Multiselect(options = {}) {
 
     });
 
-    /*
-    Uncomment this to draw the geometry for debugging puposes.
-    const olFeature = format.readFeature(turfGeometry);
-    olFeature.getGeometry().transform('EPSG:4326', projection);
-    debugLayer.addFeature(olFeature);
-    console.log(items.length);
-    console.log(intersectingItems.length);
-    */
-
     return intersectingItems;
   }
 
@@ -752,6 +723,7 @@ const Multiselect = function Multiselect(options = {}) {
   function getFeaturesFromWfsServer(layer, extent, selectionGroup, selectionGroupTitle) {
     return new Promise(((resolve) => {
       // FIXME: getFeature ignores SRS. Won't work if different SRS
+      // Will be fixed in origo.
       const req = Origo.getFeature(null, layer, viewer.getMapSource(), viewer.getProjectionCode(), viewer.getProjection(), extent);
       req.then((data) => {
         const selectedRemoteItems = data.map((feature) => new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle));
@@ -784,7 +756,6 @@ const Multiselect = function Multiselect(options = {}) {
 
   function removeRadiusLengthTooltip() {
     map.removeOverlay(radiusLengthTooltip);
-    //  viewer.removeOverlays(overlayArray);
   }
 
   /**
@@ -942,42 +913,15 @@ const Multiselect = function Multiselect(options = {}) {
       target = `${viewer.getMain().getMapTools().getId()}`;
       map = viewer.getMap();
       selectionManager = viewer.getSelectionManager();
-      // source object to hold drawn features that mark an area to select features from
+      // source object to hold drawn features that mark an area to select features fromstyle
       // Draw Interaction does not need a layer, only a source is enough for it to work.
       selectSource = new Origo.ol.source.Vector();
-      const Style = Origo.ol.style;
 
-      const temporaryStyle = [
-        /* We are using two different styles:
-         *  - The first style is for line & polygons geometries.
-         *  - The second style is for point geometries.
-         */
-        new Style.Style({
-          fill: new Style.Fill({
-            color: 'rgba(255,255,255,0.7)',
-          }),
-          stroke: new Style.Stroke({
-            color: '#3399CC',
-            width: 3,
-          }),
-        }),
-        new Style.Style({
-          image: new Style.Circle({
-            radius: 6,
-            fill: new Style.Fill({
-              color: 'rgba(255,255,255,0.7)',
-            }),
-            stroke: new Style.Stroke({
-              color: '#3399CC',
-              width: 3,
-            })
-          })
-        })
-      ];
-           
+      // Use default symbols or symbols from configuration 
+      bufferSymbol = options.bufferSymbol ? Origo.Style.createStyle({ style: options.bufferSymbol, viewer })() : Origo.Style.createStyleRule(defaultstyles.buffer);
+      chooseSymbol = options.chooseSymbol ? Origo.Style.createStyle({ style: options.chooseSymbol, viewer })() : Origo.Style.createStyleRule(defaultstyles.choose);
 
       temporaryLayer = Origo.featurelayer(null, map);
-      temporaryLayer.setStyle(temporaryStyle);
 
       this.addComponents(buttons);
       this.render();

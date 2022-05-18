@@ -2,10 +2,24 @@
 
 **PLEASE NOTE THAT THIS IS A BETA VERSION**
 
-Multiselect plugin for Origo.
+Multiselect plugin for Origo. It adds a new toolbox that contains tools for selecting features using more advanced methods than origo
+natively supports.
+
+Features can be selected using:
+- Point. Click in the map. Ctrl-click to remove from selection.
+- Line. Draw a line on the map to select overlapping features.
+- Rectangle. Draw a rectangle on the map to select overlapping features.
+- Circle. Draw a circle on the map to select overlapping features.
+- Polygon. Draw a polygon on the map to select overlapping features.
+- Buffer around another feature. Select a feature from any layer, optionally add a buffer radius to to select features overlapping the buffer area. 
+
+## Usage
+The plugin is added to origo by including the multiselect.min.js script. It contains one publicly available function _Multiselect()_, which
+creates a origo component, which in turn is added to origo. The plugin is configured in javascript using an optional argument to _Multiselect()_.
 
 
-#### Example usage of Multiselect plugin
+### Example usage of Multiselect plugin
+
 
 **index.html:**
 ```
@@ -26,16 +40,19 @@ Multiselect plugin for Origo.
       //Init origo
       var origo = Origo('index.json');
       origo.on('load', function (viewer) {
-        var multiselect = Multiselect();
+        const msConfig = {
+          lineBufferFactor: 5
+        };
+        var multiselect = Multiselect(msConfig);
         viewer.addComponent(multiselect);
       });
     </script>
 ```
 
-## Configuration
-The Multiselect function takes one argumnet which is an options object that can have the following properties:
 
 ### Options
+The optional argument to Multiselect is an object which can have the following properties:
+
 Property | Description | Default value
 --- | --- | ---
 tools | Which tools are available. Array of ['click', 'box', 'circle', 'polygon', 'buffer', 'line']. | All
@@ -44,14 +61,18 @@ lineBufferFactor | How much a line should be buffered before intersecting (pixel
 selectableLayers | Array of available layerConfigurations. If more than one layerConfiguration is present, a configuration selector tool is available. | All visible
 currentLayerConfig | Index of the selected layerConfiguration at startup | 0
 pointBufferFactor | How much a point should be buffered before intersecting when using click tool. Does not apply if active configuration is All visible, as that uses featureInfo hitTolerance setting. | 1
+bufferSymbol | Name of a symbol in origo configuration to use as symbol for buffered objects. Symbol is always a polygon. | A built-in symbol
+chooseSymbol | Name of a symbol in origo configuration to use as symbol for highlighted features when choosing which feature to buffer. Symbol should handle point, line and polygon. | A built-in symbol
 
 #### layerConfiguration
-A layerConfiguration specifies which layers are available for selecting features from.
+A layerConfiguration specifies in which layers features are selected. The default behaviour is to select features in all currently visible
+layers, but when a _layerConfiguration_ that specifies layers or groups, features are always selected from those layers regardeless of their
+visibility and not from any other layers.
 
 Property | Description | Required
 --- | --- | ---
 name | Name of the configuration. Displayed in the configuration selection tool | Yes
-layers | Array of layer names that features can be selected from. If omitted all visible layers are used. If layer name is a group layer, all layers in the group are included unless explicitly excluded. | No
+layers | Array of layer names that features are selected from. If omitted all visible layers are used. If layer name is a group layer, all layers in the group are included unless explicitly excluded. | No
 exclude | Array of layer names that are excluded from feature selection. | No
 
 Example:
