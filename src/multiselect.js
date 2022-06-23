@@ -592,11 +592,41 @@ const Multiselect = function Multiselect(options = {}) {
       selectionGroup = layer.get('name');
       selectionGroupTitle = layer.get('title');
     }
+    // TODO: break out to config, this is just for developing
+    const layerConfig = [
+      {
+        name: 'kombolager',
+        queryInfoLayer: 'punktlager'
+      }
+    ];
+
+    // First see if we have a config that decides where to query
+    const currLayerConfig = layerConfig.find(i => i.name === layer.get('name'));
+    if (currLayerConfig) {
+      const qiLayer = viewer.getLayer(currLayerConfig.queryInfoLayer);
+      if (layer.getSource().getParams) {
+        // TODO: This implementation assumes a lot. For instance it only support CQL for GeoServer and it 
+        // utilises the undocumented feature of adding client side filters to WMS.
+        // Also it assumes qiLayer is WFS. Maybe it should be possible to point out WMS e.g. if layer is WMTS or even start to support AGS
+        // possibly even honour layer's fetaureInfoLayer setting, which is actually recursive.
+        const params = layer.getSource().getParams();
+        if (Object.hasOwn(params, 'CQL_FILTER')) {
+          qiLayer.set('filter', params.CQL_FILTER);
+        }
+      }
+      const serverFeatures = await Origo.getFeature(null, qiLayer, viewer.getMapSource(), viewer.getProjectionCode(), viewer.getProjection(), extent);
+      console.log(serverFeatures.length);
+      serverFeatures.forEach(feature => {
+        const item = new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle);
+        selectedItems.push(item);
+      });
+
+    }
 
     // check if layer supports this method, or basically is some sort of vector layer.
     // Alternatively we can check layer.getType() === 'VECTOR', but a bit unsure if all types of vector layer have 'VECTOR' as type.
     // Basically here we get all vector features from client.
-    if (layer.getSource().forEachFeatureIntersectingExtent) {
+    else if (layer.getSource().forEachFeatureIntersectingExtent) {
       if (currentLayerConfig.layers && layer.get('type') === 'WFS' && layer.get('strategy') !== 'all') {
         // If Wfs is using bbox, the features may not have beeen fetched if layer is not visisble
         // FIXME: getFeature does not honour coordinate systems and it is no use to translate the extent, as getFeature 
@@ -610,11 +640,52 @@ const Multiselect = function Multiselect(options = {}) {
         const item = new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle);
         selectedItems.push(item);
       });
-    } else {
-      // FIXME: call conditionally if configured to do so, or fix inside function to always succeed.
-      const remoteItems = await getFeaturesFromWfsServer(layer, extent, selectionGroup, selectionGroupTitle);
-      // Can't have both local and remote in same layer, so this is safe.
-      selectedItems = remoteItems;
+      // TODO: Require configuration for this?
+    } else if (layer.get('type') === 'WMS') {
+      // Make a featureinfo call and fake a "big" click that covers the entire extenet
+      // For some reason a 1x1 map will yield a bunch of false positives. Probably because the server renders surrounding objects
+      // and symbol becomes large enough to spill in to the map and the symbol is used to detect features.
+      // Use a decently sized map and buffer center to cover entire extent.
+      // Strangely it does not work with larger maps either. Probably Geoserver implementers did not expect anyone to use a 50 pixel click tolerance.
+      // It doesn't really matter if we get false positives, they are filtered out later anyway.
+
+      // Coord and resultion arguments don't matter for us. The reult of the calculation will be overwritten anyway.
+      // This will retain any filter on layer source, whatever they are called, as most arguments are copied from source.
+      const qiUrl = new URL(layer.getSource().getFeatureInfoUrl([0, 0], 100, viewer.getProjection(), {
+        INFO_FORMAT: 'application/json',
+        FEATURE_COUNT: '1000'
+      }));
+
+      const fakeMapSize = '51';
+      const halfFakeMapSize = '25';
+      const params = qiUrl.searchParams;
+      // TODO: I and J for 1.3.0
+      params.set('X', halfFakeMapSize);
+      params.set('Y', halfFakeMapSize);
+      params.set('BBOX', extent.toString());
+      params.set('WIDTH', fakeMapSize);
+      params.set('HEIGHT', fakeMapSize);
+      // GeoServer only
+      // TODO: Qgis has "radius"
+      params.set('buffer', halfFakeMapSize);
+
+      qiUrl.search = params.toString();
+      console.log(qiUrl.toString());
+      const res = await fetch(qiUrl);
+      const json = await res.json();
+
+      const newFeatures = viewer.getMapUtils().geojsonToFeature(json);
+      console.log(newFeatures.length);
+      newFeatures.forEach (feature => {
+        const item = new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle);
+        selectedItems.push(item);
+      });
+
+      // TODO: Have a fallback to the old implementation (assume WFS)?
+      //// FIXME: call conditionally if configured to do so, or fix inside function to always succeed.
+      //const remoteItems = await getFeaturesFromWfsServer(layer, extent, selectionGroup, selectionGroupTitle);
+      //// Can't have both local and remote in same layer, so this is safe.
+      //selectedItems = remoteItems;
     }
     return selectedItems;
   }
@@ -723,6 +794,7 @@ const Multiselect = function Multiselect(options = {}) {
   function getFeaturesFromWfsServer(layer, extent, selectionGroup, selectionGroupTitle) {
     return new Promise(((resolve) => {
       // FIXME: getFeature ignores SRS. Won't work if different SRS
+      // FIXME: Does not support 
       // Will be fixed in origo.
       const req = Origo.getFeature(null, layer, viewer.getMapSource(), viewer.getProjectionCode(), viewer.getProjection(), extent);
       req.then((data) => {
