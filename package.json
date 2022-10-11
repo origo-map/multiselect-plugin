@@ -15,6 +15,8 @@
     "@babel/runtime-corejs2": "^7.11.2",
     "@turf/boolean-disjoint": "^6.0.2",
     "@turf/buffer": "^6.5.0",
+    "@turf/helpers": "^6.5.0",
+    "@turf/meta": "^6.5.0",
     "npm-run-all": "^4.1.5",
     "whatwg-fetch": "^2.0.4"
   },
