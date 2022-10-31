@@ -38,6 +38,7 @@ const Multiselect = function Multiselect(options = {}) {
   let target;
   let multiselectElement;
   let selectionManager;
+  let featureInfo;
   /** name of symbol in origo configuration */
   let bufferSymbol;
   /** name of symbol in origo configuration */
@@ -158,7 +159,7 @@ const Multiselect = function Multiselect(options = {}) {
    * Internal helper to check if there are any selected items
    * */
   function hasSelection() {
-    return selectionManager.getSelectedItems().getLength() > 0;
+    return selectionManager.getSelectedItems().getLength() > 0 || featureInfo.getSelectionLayer().getSource().getFeatures().length > 0;
   }
 
   /**
@@ -166,17 +167,25 @@ const Multiselect = function Multiselect(options = {}) {
    * */
   function fetchFeatures_Selection() {
     // Get all selected geometries and put them in a GeometryCollection for further processing
-    const geometries = selectionManager.getSelectedItems().getArray().map(item => {
-      // This geometry will most likely be converted to turf, which knows nothing about circles.
-      if (item.type === 'Circle') {
-        return Origo.ol.geom.Polygon.fromCircle(item.getFeature().getGeometry());
+    let geometries;
+    if (featureInfo.getSelectionLayer().getSource().getFeatures().length > 0) {
+      geometries = featureInfo.getSelectionLayer().getSource().getFeatures().map(f => f.getGeometry());
+      // Clear previous selection if it came from popup, which most likely would be a searchresult.
+      featureInfo.clear();
+    } else {
+      const selectedFeatures = selectionManager.getSelectedItems().getArray();
+      geometries = selectedFeatures.map(item => item.getFeature().getGeometry());
+    }
+    // This geometry will most likely be converted to turf, which knows nothing about circles.
+    geometries = geometries.map(currGeometry => {
+      if (currGeometry.getType() === 'Circle') {
+        return Origo.ol.geom.Polygon.fromCircle(currGeometry);
+      } else {
+        return currGeometry;
       }
-      return item.getFeature().getGeometry();
     });
     const collection = new Origo.ol.geom.GeometryCollection(geometries);
-    // TODO: should selection be cleared first? Other tools only add to selection, but this tool uses selection as input, which
-    // will remain selected. It would anyhow probably be selected again anyhow.
-
+    
     // Store the newly created feature in a global to be picked up later.
     bufferFeature = new Origo.ol.Feature(collection);
     createRadiusModal();
@@ -969,6 +978,7 @@ const Multiselect = function Multiselect(options = {}) {
       target = `${viewer.getMain().getMapTools().getId()}`;
       map = viewer.getMap();
       selectionManager = viewer.getSelectionManager();
+      featureInfo = viewer.getFeatureinfo();
       // source object to hold drawn features that mark an area to select features fromstyle
       // Draw Interaction does not need a layer, only a source is enough for it to work.
       selectSource = new Origo.ol.source.Vector();
