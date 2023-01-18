@@ -2,6 +2,8 @@
 import buffer from '@turf/buffer';
 import disjoint from '@turf/boolean-disjoint';
 import * as defaultstyles from './defaultstyles';
+import { geometryCollection } from '@turf/helpers';
+import { featureEach } from '@turf/meta';
 
 const Multiselect = function Multiselect(options = {}) {
   let selectSource;
@@ -36,6 +38,7 @@ const Multiselect = function Multiselect(options = {}) {
   let target;
   let multiselectElement;
   let selectionManager;
+  let featureInfo;
   /** name of symbol in origo configuration */
   let bufferSymbol;
   /** name of symbol in origo configuration */
@@ -154,6 +157,42 @@ const Multiselect = function Multiselect(options = {}) {
     lineInteraction.on('drawend', fetchFeatures_LineString);
   }
 
+  /**
+   * Internal helper to check if there are any selected items
+   * */
+  function hasSelection() {
+    return selectionManager.getSelectedItems().getLength() > 0 || featureInfo.getSelectionLayer().getSource().getFeatures().length > 0;
+  }
+
+  /**
+   * Invokes the select by selection flow
+   * */
+  function fetchFeatures_Selection() {
+    // Get all selected geometries and put them in a GeometryCollection for further processing
+    let geometries;
+    if (featureInfo.getSelectionLayer().getSource().getFeatures().length > 0) {
+      geometries = featureInfo.getSelectionLayer().getSource().getFeatures().map(f => f.getGeometry());
+      // Clear previous selection if it came from popup, which most likely would be a searchresult.
+      featureInfo.clear();
+    } else {
+      const selectedFeatures = selectionManager.getSelectedItems().getArray();
+      geometries = selectedFeatures.map(item => item.getFeature().getGeometry());
+    }
+    // This geometry will most likely be converted to turf, which knows nothing about circles.
+    geometries = geometries.map(currGeometry => {
+      if (currGeometry.getType() === 'Circle') {
+        return Origo.ol.geom.Polygon.fromCircle(currGeometry);
+      } else {
+        return currGeometry;
+      }
+    });
+    const collection = new Origo.ol.geom.GeometryCollection(geometries);
+    
+    // Store the newly created feature in a global to be picked up later.
+    bufferFeature = new Origo.ol.Feature(collection);
+    createRadiusModal();
+  }
+
   function toggleType(button) {
     if (activeButton) {
       document.getElementById(activeButton.getId()).classList.remove('active');
@@ -184,7 +223,11 @@ const Multiselect = function Multiselect(options = {}) {
     } else if (type === 'polygon') {
       polygonInteraction.setActive(true);
     } else if (type === 'buffer') {
-      bufferInteraction.setActive(true);
+      if (hasSelection()) {
+        fetchFeatures_Selection();
+      } else {
+        bufferInteraction.setActive(true);
+      }
     } else if (type === 'line') {
       lineInteraction.setActive(true);
     }
@@ -519,6 +562,10 @@ const Multiselect = function Multiselect(options = {}) {
     let turfGeometry;
     // Clone first to avoid messing up caller's geometry
     const geometryClone = geometry.clone();
+    if (radius === 0) {
+      // No need to buffer if buffer radius is 0. Also turf buffer drops points and lines in geometryCollections when radius i 0.
+      return new Origo.ol.Feature(geometryClone);
+    }
 
     if (geometryClone.getType() === 'Circle') {
       // circle is not a standard geometry. we need to create a polygon first.
@@ -526,13 +573,24 @@ const Multiselect = function Multiselect(options = {}) {
       polygon.transform(projection, 'EPSG:4326');
       turfGeometry = format.writeGeometryObject(polygon);
     } else {
+      // Have to transform as turf only works with WGS84. 
       geometryClone.transform(projection, 'EPSG:4326');
       turfGeometry = format.writeGeometryObject(geometryClone);
     }
 
-    // OBS! buffer always return a feature
-    // Have to transform as turf only works with WGS84. 
-    const bufferedTurfFeature = buffer(turfGeometry, radius / 1000, { units: 'kilometers' });
+    // Buffer returns a feature or a FeatureCollection, not Geometry or GeometryCollection
+    // This is not very elegant, as buffer does not dissolve the buffered geometries in a collection aginst each other
+    let bufferedTurfFeature = buffer(turfGeometry, radius / 1000, { units: 'kilometers' });
+    if (bufferedTurfFeature.type === 'FeatureCollection') {
+      // Rebuild a GeometryCollection from FeatureCollection
+      const geoms = [];
+      // TODO: Also run a turf/union to dissolve collection?
+      //       It would probaby also be necessary to explode multiparts in that case, as the parts may be scattered all over a large extent
+      //       Exploding could be done here directly to a collection, or later when collection is exploded. The latter would also explode multiparts
+      //       that were not buffered (when radius = 0).
+      featureEach(bufferedTurfFeature, currFeat => geoms.push(currFeat.geometry));
+      bufferedTurfFeature = geometryCollection(geoms);
+    }
     const bufferedOLFeature = format.readFeature(bufferedTurfFeature);
     bufferedOLFeature.getGeometry().transform('EPSG:4326', projection);
 
@@ -739,7 +797,14 @@ const Multiselect = function Multiselect(options = {}) {
             const subLayers = currLayer.getLayers().getArray();
             traverseLayers(subLayers, currLayer);
           } else {
-            promises.push(extractResultsForALayer(currLayer, groupLayer, extent));
+            if (geometry.getType() === 'GeometryCollection') {
+              // Explode geometry collections as they very well have disjoint extents, which would result in tons of false positives.
+              // TODO: Explode multiparts as well? 
+              //       It will result in more calls, but reduces scattered geometries in a large extent.
+              geometry.getGeometries().forEach(currGeo => promises.push(extractResultsForALayer(currLayer, groupLayer, currGeo.getExtent())));
+            } else {
+              promises.push(extractResultsForALayer(currLayer, groupLayer, extent));
+            }
           }
         }
       }
@@ -1009,6 +1074,7 @@ const Multiselect = function Multiselect(options = {}) {
       target = `${viewer.getMain().getMapTools().getId()}`;
       map = viewer.getMap();
       selectionManager = viewer.getSelectionManager();
+      featureInfo = viewer.getFeatureinfo();
       // source object to hold drawn features that mark an area to select features fromstyle
       // Draw Interaction does not need a layer, only a source is enough for it to work.
       selectSource = new Origo.ol.source.Vector();
