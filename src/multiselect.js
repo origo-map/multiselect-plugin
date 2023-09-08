@@ -1,9 +1,9 @@
-﻿import Origo from 'Origo';
+import Origo from 'Origo';
 import buffer from '@turf/buffer';
 import disjoint from '@turf/boolean-disjoint';
-import * as defaultstyles from './defaultstyles';
 import { geometryCollection } from '@turf/helpers';
 import { featureEach } from '@turf/meta';
+import * as defaultstyles from './defaultstyles';
 
 const Multiselect = function Multiselect(options = {}) {
   let selectSource;
@@ -43,7 +43,7 @@ const Multiselect = function Multiselect(options = {}) {
   let bufferSymbol;
   /** name of symbol in origo configuration */
   let chooseSymbol;
-  
+
   const buttons = [];
   const clusterFeatureinfoLevel = 1;
   const hitTolerance = 0;
@@ -61,7 +61,7 @@ const Multiselect = function Multiselect(options = {}) {
   const selectableLayers = options.selectableLayers ? options.selectableLayers : [{ name: 'Default' }];
   let currentLayerConfig = options.defaultLayerConfig ? selectableLayers[options.defaultLayerConfig] : selectableLayers[0];
   const pointBufferFactor = options.pointBufferFactor ? options.pointBufferFactor : 1;
-  const useWMSFeatureInfo = options.WMSHandling && options.WMSHandling.source == 'WMS'; 
+  const useWMSFeatureInfo = options.WMSHandling && options.WMSHandling.source === 'WMS';
   const alternativeLayerConfiguration = options.alternativeLayers || [];
 
   function setActive(state) {
@@ -76,319 +76,11 @@ const Multiselect = function Multiselect(options = {}) {
     viewer.dispatch('toggleClickInteraction', detail);
   }
 
-  function enableInteraction() {
-    document.getElementById(multiselectButton.getId()).classList.add('active');
-    // This accidently unhides the multselect button. But that's OK.
-    buttons.forEach(currButton => {
-      document.getElementById(currButton.getId()).classList.remove('hidden');
-    });
-    document.getElementById(multiselectButton.getId()).classList.remove('tooltip');
-    setActive(true);
-    addInteractions();
-    document.getElementById(defaultButton.getId()).click();
-    // if features are added to selection managaer from featureinfo, this will clear that selection when activating multiselect.
-    // selectionManager.clearSelection();
-  }
-
-  function disableInteraction() {
-    if (activeButton) {
-      document.getElementById(activeButton.getId()).classList.remove('active');
-    }
-    document.getElementById(multiselectButton.getId()).classList.remove('active');
-    buttons.forEach(currButton => {
-      if (currButton !== multiselectButton) {
-        document.getElementById(currButton.getId()).classList.add('hidden');
-      }
-    });
-
-    document.getElementById(multiselectButton.getId()).classList.add('tooltip');
-
-    removeInteractions();
-    removeRadiusLengthTooltip();
-    temporaryLayer.clear();
-    selectionManager.clearSelection();
-    setActive(false);
-  }
-
-  function addInteractions() {
-    clickInteraction = new Origo.ol.interaction.Pointer({
-      handleEvent: fetchFeatures_Click
-    });
-
-    boxInteraction = new Origo.ol.interaction.Draw({
-      source: selectSource,
-      type: 'Circle',
-      geometryFunction: Origo.ol.interaction.Draw.createBox()
-    });
-
-    circleInteraction = new Origo.ol.interaction.Draw({
-      source: selectSource,
-      type: 'Circle'
-    });
-
-    polygonInteraction = new Origo.ol.interaction.Draw({
-      source: selectSource,
-      type: 'Polygon'
-    });
-
-    bufferInteraction = new Origo.ol.interaction.Pointer({
-      handleEvent: fetchFeatures_Buffer_click
-    });
-
-    lineInteraction = new Origo.ol.interaction.Draw({
-      source: selectSource,
-      type: 'LineString'
-    });
-
-    map.addInteraction(clickInteraction);
-    map.addInteraction(boxInteraction);
-    map.addInteraction(circleInteraction);
-    map.addInteraction(polygonInteraction);
-    map.addInteraction(bufferInteraction);
-    map.addInteraction(lineInteraction);
-
-    boxInteraction.on('drawend', fetchFeatures_Box);
-    circleInteraction.on('drawstart', (evt) => {
-      sketch = evt.feature.getGeometry();
-      createRadiusLengthTooltip();
-    });
-    circleInteraction.on('drawend', fetchFeatures_Circle);
-    polygonInteraction.on('drawend', fetchFeatures_Polygon);
-    lineInteraction.on('drawend', fetchFeatures_LineString);
-  }
-
   /**
    * Internal helper to check if there are any selected items
    * */
   function hasSelection() {
     return selectionManager.getSelectedItems().getLength() > 0 || featureInfo.getSelectionLayer().getSource().getFeatures().length > 0;
-  }
-
-  /**
-   * Invokes the select by selection flow
-   * */
-  function fetchFeatures_Selection() {
-    // Get all selected geometries and put them in a GeometryCollection for further processing
-    let geometries;
-    if (featureInfo.getSelectionLayer().getSource().getFeatures().length > 0) {
-      geometries = featureInfo.getSelectionLayer().getSource().getFeatures().map(f => f.getGeometry());
-      // Clear previous selection if it came from popup, which most likely would be a searchresult.
-      featureInfo.clear();
-    } else {
-      const selectedFeatures = selectionManager.getSelectedItems().getArray();
-      geometries = selectedFeatures.map(item => item.getFeature().getGeometry());
-    }
-    // This geometry will most likely be converted to turf, which knows nothing about circles.
-    geometries = geometries.map(currGeometry => {
-      if (currGeometry.getType() === 'Circle') {
-        return Origo.ol.geom.Polygon.fromCircle(currGeometry);
-      } else {
-        return currGeometry;
-      }
-    });
-    const collection = new Origo.ol.geom.GeometryCollection(geometries);
-    
-    // Store the newly created feature in a global to be picked up later.
-    bufferFeature = new Origo.ol.Feature(collection);
-    createRadiusModal();
-  }
-
-  function toggleType(button) {
-    if (activeButton) {
-      document.getElementById(activeButton.getId()).classList.remove('active');
-    }
-
-    function disableAll() {
-      clickInteraction.setActive(false);
-      boxInteraction.setActive(false);
-      circleInteraction.setActive(false);
-      polygonInteraction.setActive(false);
-      bufferInteraction.setActive(false);
-      lineInteraction.setActive(false);
-      map.un('pointermove', pointerMoveHandler);
-    }
-
-    document.getElementById(button.getId()).classList.add('active');
-    activeButton = button;
-
-    disableAll();
-
-    if (type === 'click') {
-      clickInteraction.setActive(true);
-    } else if (type === 'box') {
-      boxInteraction.setActive(true);
-    } else if (type === 'circle') {
-      circleInteraction.setActive(true);
-      map.on('pointermove', pointerMoveHandler);
-    } else if (type === 'polygon') {
-      polygonInteraction.setActive(true);
-    } else if (type === 'buffer') {
-      if (hasSelection()) {
-        fetchFeatures_Selection();
-      } else {
-        bufferInteraction.setActive(true);
-      }
-    } else if (type === 'line') {
-      lineInteraction.setActive(true);
-    }
-  }
-
-  function removeInteractions() {
-    map.removeInteraction(clickInteraction);
-    map.removeInteraction(boxInteraction);
-    map.removeInteraction(circleInteraction);
-    map.removeInteraction(polygonInteraction);
-    map.removeInteraction(bufferInteraction);
-    map.removeInteraction(lineInteraction);
-  }
-
-  /**
-   * Event handler for click event. Selects features by mouse click, almost like featureInfo
-   * @param {any} evt
-   */
-  function fetchFeatures_Click(evt) {
-
-    if (evt.type === 'singleclick') {
-      const isCtrlKeyPressed = evt.originalEvent.ctrlKey;
-
-      if (currentLayerConfig.layers) {
-        // If configured with specific layers, we can't use the featureInfo functions to fecth features as they honour visibility
-        const resolution = map.getView().getResolution()
-        const point = new Origo.ol.geom.Point(evt.coordinate);
-        // Buffer the point to make it emulate featureInfo radius.
-        const geometry = createBufferedFeature(point, resolution * pointBufferFactor).getGeometry();
-        updateSelectionManager(geometry, isCtrlKeyPressed);
-      } else {
-        // For backwards compability use featureInfo style when not using specific layer conf.
-        // The featureInfo style will honour the alternative featureInfo layer and radius configuration in the core
-        // also it unwinds clustering.
-        // Featureinfo in two steps. Concat serverside and clientside when serverside is finished
-        const pixel = evt.pixel;
-        const coordinate = evt.coordinate;
-        const layers = viewer.getQueryableLayers();
-        const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
-          coordinate,
-          map,
-          pixel,
-          clusterFeatureinfoLevel,
-          hitTolerance
-        }, viewer);
-        // Abort if clientResult is false
-        if (clientResult !== false) {
-          Origo.getFeatureInfo.getFeaturesFromRemote({
-            coordinate,
-            layers,
-            map,
-            pixel
-          }, viewer)
-            .then((data) => {
-              const serverResult = data || [];
-              const result = serverResult.concat(clientResult);
-              if (isCtrlKeyPressed) {
-                if (result.length > 0) {
-                  selectionManager.removeItems(result);
-                }
-              } else if (result.length === 1) {
-                selectionManager.addOrHighlightItem(result[0]);
-              } else if (result.length > 1) {
-                selectionManager.addItems(result);
-              }
-            });
-        }
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * Event handler for rectangle interaction. Selects features by a rectangle.
-   * @param {any} evt
-   */
-  function fetchFeatures_Box(evt) {
-    const geometry = evt.feature.getGeometry();
-    updateSelectionManager(geometry);
-  }
-
-  /**
-   * Event handler för circle interaction. Selects features by a circle.
-   * @param {any} evt
-   */
-  function fetchFeatures_Circle(evt) {
-    // Things needed to be done on 'drawend'
-    // ==>
-    sketch = null;
-    removeRadiusLengthTooltip();
-    // <==
-
-    const geometry = evt.feature.getGeometry();
-    updateSelectionManager(geometry);
-  }
-
-  /**
-   * Event handler för polygon interaction. Selects features by a polygon.
-   * @param {any} evt
-   */
-  function fetchFeatures_Polygon(evt) {
-    const geometry = evt.feature.getGeometry();
-    updateSelectionManager(geometry);
-  }
-
-  /**
-   * Eventhandler for click when selecting by feature. Selects the feature to select by. If click hits severat features
-   * a modal is displayed.
-   * @param {any} evt
-   */
-  function fetchFeatures_Buffer_click(evt) {
-    if (evt.type === 'singleclick') {
-      // Featurinfo in two steps. Concat serverside and clientside when serverside is finished
-      const pixel = evt.pixel;
-      const coordinate = evt.coordinate;
-      const layers = viewer.getQueryableLayers();
-      const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
-        coordinate,
-        map,
-        pixel,
-        clusterFeatureinfoLevel,
-        hitTolerance
-      }, viewer);
-      // Abort if clientResult is false
-      if (clientResult !== false) {
-        Origo.getFeatureInfo.getFeaturesFromRemote({
-          coordinate,
-          layers,
-          map,
-          pixel
-        }, viewer)
-          .then((data) => {
-            const serverResult = data || [];
-            const result = serverResult.concat(clientResult);
-            if (result.length > 0) {
-              let promise;
-              if (result.length === 1) {
-                bufferFeature = result[0].getFeature().clone();
-                promise = Promise.resolve();
-              } else if (result.length > 1) {
-                promise = createFeatureSelectionModal(result);
-              }
-              promise.then(() => createRadiusModal());
-            }
-          });
-      }
-      return false;
-    }
-    return true;
-  }
-  /**
-   * Event handler for line interaction. Selects by line.
-   * @param {any} evt
-   */
-  function fetchFeatures_LineString(evt) {
-    const geometry = evt.feature.getGeometry();
-    const resolution = map.getView().getResolution()
-    // Buffer the line to make it possible to hit points with a line
-    const bufferedGeometry = createBufferedFeature(geometry, resolution * lineBufferFactor).getGeometry();
-    updateSelectionManager(bufferedGeometry);
   }
 
   function displayTemporaryFeature(feature, style) {
@@ -404,10 +96,13 @@ const Multiselect = function Multiselect(options = {}) {
    */
   function createFeatureSelectionModal(items) {
     // extracting features
-    const features = items.map((item) => item.getFeature());
+    const features = items.map(item => item.getFeature());
     const featuresList = items.map((item) => {
       const layerAttributes = item.getLayer().get('attributes');
-      const bufferAttribute = layerAttributes ? layerAttributes[0].name ? layerAttributes[0].name : undefined : undefined;
+      let bufferAttribute;
+      if (layerAttributes && layerAttributes[0] && layerAttributes[0].name) {
+        bufferAttribute = layerAttributes[0].name;
+      }
       const layerName = item.getLayer().get('title');
       const feature = item.getFeature();
       const title = feature.get(bufferAttribute) || feature.get('namn') || feature.getId();
@@ -421,18 +116,17 @@ const Multiselect = function Multiselect(options = {}) {
       const content = `<div id="featureSelector">
                         ${featuresList.join('')}
                       </div>`;
-      const target = viewer.getId();
+      const mTarget = viewer.getId();
       const modal = Origo.ui.Modal({
         title,
         content,
-        target
+        target: mTarget
       });
       const featureSelectors = document.getElementsByClassName('featureSelectorItem');
 
-      for (let index = 0; index < featureSelectors.length; index++) {
-        const f = featureSelectors[index];
-        f.addEventListener('click', function (e) {
-          bufferFeature = features.find((ff) => ff.getId().toString() === this.id).clone();
+      featureSelectors.forEach((f) => {
+        f.addEventListener('click', (e) => {
+          bufferFeature = features.find(ff => ff.getId().toString() === this.id).clone();
           modal.closeModal();
           resolve();
           // Remove highlight here if user happens to close the buffer modal without submitting, as we don't know when that happens
@@ -440,59 +134,14 @@ const Multiselect = function Multiselect(options = {}) {
           temporaryLayer.clear();
           e.stopPropagation();
         });
-        f.addEventListener('mouseover', function() {
-          const hoverFeature = features.find((ff) => ff.getId().toString() === this.id).clone();
+        f.addEventListener('mouseover', () => {
+          const hoverFeature = features.find(ff => ff.getId().toString() === this.id).clone();
           displayTemporaryFeature(hoverFeature, chooseSymbol);
-         
         });
-        f.addEventListener('mouseout', function () {
+        f.addEventListener('mouseout', () => {
           temporaryLayer.clear();
         });
-      }
-    });
-  }
-
-  /**
-   * Displays a modal so the user can enter a buffer radius
-   * */
-  function createRadiusModal() {
-    const title = 'Ange buffert i meter (ex 10,4):';
-    const content = `<div>
-                      <form id="radius-form">
-                      <input type="number" id="bufferradius">
-                      <button type="submit">OK</button>
-                    </div></form>`;
-    const target = viewer.getId();
-    const modal = Origo.ui.Modal({
-      title,
-      content,
-      target
-    });
-    const formEl = document.getElementById('radius-form');
-
-    const bufferradiusEl = document.getElementById('bufferradius');
-    bufferradiusEl.focus();
-
-    formEl.addEventListener('submit', (e) => {
-      // Don't want to actually submit form
-      e.preventDefault();
-      const radiusVal = bufferradiusEl.value;
-      // Rely on browser to ensure type="number"
-      const radius = parseFloat(radiusVal);
-
-      // Not allowed to buffer inwards for 0 and 1 dimensional geometries
-      if ((!radius && radius !== 0)
-        || (radius <= 0 && (bufferFeature.getGeometry().getType() === 'Point'
-          || bufferFeature.getGeometry().getType() === 'MultiPoint'
-          || bufferFeature.getGeometry().getType() === 'MultiLineString'
-          || bufferFeature.getGeometry().getType() === 'LineString'))) {
-        
-        return;
-      } 
-
-      modal.closeModal();
-      
-      fetchFeatures_Buffer_buffer(radius);
+      });
     });
   }
 
@@ -502,16 +151,16 @@ const Multiselect = function Multiselect(options = {}) {
   function showSettingsModal() {
     const title = 'Välj aktiv konfiguration:';
     const dropdownContainerId = 'dropdown-container';
-    let content = `<div id="${dropdownContainerId}"></div>`;
-    const target = viewer.getId();
+    const content = `<div id="${dropdownContainerId}"></div>`;
+    const mTarget = viewer.getId();
     const modal = Origo.ui.Modal({
       title,
       content,
-      target
+      target: mTarget
     });
 
     let activeIndex;
-    const selectOptions = selectableLayers.map((currConfig,ix) => {
+    const selectOptions = selectableLayers.map((currConfig, ix) => {
       const obj = {};
       obj.name = currConfig.name;
       // Have to cast index to string in order for dropdown to make a correct comparison when setting active item
@@ -530,22 +179,9 @@ const Multiselect = function Multiselect(options = {}) {
 
     // Drop down emits a custom event on the container element when selection is made
     document.getElementById(dropdownContainerId).addEventListener('changeDropdown', (e) => {
-      currentLayerConfig = selectableLayers[parseInt(e.detail.dataAttribute)];
-       modal.closeModal();
+      currentLayerConfig = selectableLayers[parseInt(e.detail.dataAttribute, 10)];
+      modal.closeModal();
     });
-  }
-
-  /**
-   * Selects features by an already selected feature (in a global variable) with a buffer.
-   * @param {any} radius
-   */
-  function fetchFeatures_Buffer_buffer(radius) {
-    const geometry = bufferFeature.getGeometry();
-    const bufferedFeature = createBufferedFeature(geometry, radius);
-    displayTemporaryFeature(bufferedFeature, bufferSymbol);
-
-    const bufferedGeometry = bufferedFeature.getGeometry();
-    updateSelectionManager(bufferedGeometry);
   }
 
   // General function that recieves a geometry and a radius and returns a buffered feature
@@ -555,14 +191,14 @@ const Multiselect = function Multiselect(options = {}) {
    * @param {any} radius
    * @returns A feature
    */
-  function createBufferedFeature(geometry, radius) {
+  function createBufferedFeature(geometry, fRadius) {
     temporaryLayer.clear();
     const format = new Origo.ol.format.GeoJSON();
     const projection = map.getView().getProjection();
     let turfGeometry;
     // Clone first to avoid messing up caller's geometry
     const geometryClone = geometry.clone();
-    if (radius === 0) {
+    if (fRadius === 0) {
       // No need to buffer if buffer radius is 0. Also turf buffer drops points and lines in geometryCollections when radius i 0.
       return new Origo.ol.Feature(geometryClone);
     }
@@ -573,14 +209,14 @@ const Multiselect = function Multiselect(options = {}) {
       polygon.transform(projection, 'EPSG:4326');
       turfGeometry = format.writeGeometryObject(polygon);
     } else {
-      // Have to transform as turf only works with WGS84. 
+      // Have to transform as turf only works with WGS84.
       geometryClone.transform(projection, 'EPSG:4326');
       turfGeometry = format.writeGeometryObject(geometryClone);
     }
 
     // Buffer returns a feature or a FeatureCollection, not Geometry or GeometryCollection
     // This is not very elegant, as buffer does not dissolve the buffered geometries in a collection aginst each other
-    let bufferedTurfFeature = buffer(turfGeometry, radius / 1000, { units: 'kilometers' });
+    let bufferedTurfFeature = buffer(turfGeometry, fRadius / 1000, { units: 'kilometers' });
     if (bufferedTurfFeature.type === 'FeatureCollection') {
       // Rebuild a GeometryCollection from FeatureCollection
       const geoms = [];
@@ -641,11 +277,25 @@ const Multiselect = function Multiselect(options = {}) {
    * @return {feature[]} array of features
    */
   async function fetchFeaturesFromServer(layer, extent) {
-    return await Origo.getFeature(null, layer, viewer.getMapSource(), viewer.getProjectionCode(), viewer.getProjection(), extent);
+    const fetchedFeatures = await Origo.getFeature(null, layer, viewer.getMapSource(), viewer.getProjectionCode(), viewer.getProjection(), extent);
+    return fetchedFeatures;
   }
 
   /**
-   * Helper that returns all features that has an extent that intersects the given extent from the given layer as an array of SelectedItem 
+   * Helper that fetches features from server and creates an array of SelectedItem
+   * @param {any} layer
+   * @param {any} extent
+   * @param {any} selectionGroup
+   * @param {any} selectionGroupTitle
+   */
+  async function getRemoteItems(layer, extent, selectionGroup, selectionGroupTitle) {
+    const features = await fetchFeaturesFromServer(layer, extent);
+    const selectedRemoteItems = features.map(feature => new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle));
+    return selectedRemoteItems;
+  }
+
+  /**
+   * Helper that returns all features that has an extent that intersects the given extent from the given layer as an array of SelectedItem
    * @param {any} layer
    * @param {any} groupLayer
    * @param {any} extent
@@ -667,9 +317,9 @@ const Multiselect = function Multiselect(options = {}) {
     const currLayerConfig = alternativeLayerConfiguration.find(i => i.name === layer.get('name'));
     // If layer is configured to do something special, obey that. Otherwise default to something.
     if (currLayerConfig) {
-      let promises = [];
+      const promises = [];
       if (currLayerConfig.queryInfoLayers) {
-        currLayerConfig.queryInfoLayers.forEach(layerName => {
+        currLayerConfig.queryInfoLayers.forEach((layerName) => {
           const qiLayer = viewer.getLayer(layerName);
           // Try to use same filter on queryInfoLayer as the original layer. Probably only works for simple filters on same type of server when
           // original layer is WMS and query layer is WFS, which happens to be the problem we're solving.
@@ -697,12 +347,10 @@ const Multiselect = function Multiselect(options = {}) {
           console.error(e);
         }
       }
-    }
-
-    // check if layer supports this method, or basically is some sort of vector layer.
-    // Alternatively we can check layer.getType() === 'VECTOR', but a bit unsure if all types of vector layer have 'VECTOR' as type.
-    // Basically here we get all vector features from client.
-    else if (layer.getSource().forEachFeatureIntersectingExtent) {
+    } else if (layer.getSource().forEachFeatureIntersectingExtent) {
+      // check if layer supports this method, or basically is some sort of vector layer.
+      // Alternatively we can check layer.getType() === 'VECTOR', but a bit unsure if all types of vector layer have 'VECTOR' as type.
+      // Basically here we get all vector features from client.
       if (currentLayerConfig.layers && layer.get('type') === 'WFS' && layer.get('strategy') !== 'all') {
         // If Wfs is using bbox, the features may not have beeen fetched if layer is not visisble or features are out of view.
         // Fetch all intersecting features and add to layer. Then carry on as usual
@@ -732,7 +380,7 @@ const Multiselect = function Multiselect(options = {}) {
 
         // TODO: make configurable
         const fakeMapSize = '51';
-        const radius = '36'; // covers the entire rectangle
+        const rRadius = '36'; // covers the entire rectangle
         const halfFakeMapSize = '25';
         const params = qiUrl.searchParams;
         // Check what coord params to use. WMS 1.1. 0 uses X and Y, 1.3.0 uses I and J. getFeatureInfoUrl has already set these for us,
@@ -750,14 +398,14 @@ const Multiselect = function Multiselect(options = {}) {
         // GeoServer only
         // TODO: Qgis has "radius". Get param name from layer's source "type", introduced in 1407
         //       Waiting for function to be exposed in api.
-        params.set('buffer', radius);
+        params.set('buffer', rRadius);
 
         qiUrl.search = params.toString();
         const res = await fetch(qiUrl);
         const json = await res.json();
 
         const newFeatures = viewer.getMapUtils().geojsonToFeature(json);
-        newFeatures.forEach(feature => {
+        newFeatures.forEach((feature) => {
           const item = new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle);
           selectedItems.push(item);
         });
@@ -775,7 +423,45 @@ const Multiselect = function Multiselect(options = {}) {
   }
 
   /**
-   * Gets all features from the eligable layers intersecting the geometry and adds (or remove) them to SelectionManager. 
+   * General function that returns all features intersecting a geometry
+   * @param {any} items
+   * @param {any} _geometry
+   */
+  function getItemsIntersectingGeometry(items, _geometry) {
+    const geometry = _geometry.clone();
+
+    const format = new Origo.ol.format.GeoJSON();
+    const projection = map.getView().getProjection();
+    let turfGeometry;
+
+    if (geometry.getType() === 'Circle') {
+      // circle is not a standard geometry. we need to create a polygon first.
+      const polygon = Origo.ol.geom.Polygon.fromCircle(geometry);
+      polygon.transform(projection, 'EPSG:4326');
+      turfGeometry = format.writeGeometryObject(polygon);
+    } else {
+      geometry.transform(projection, 'EPSG:4326');
+      turfGeometry = format.writeGeometryObject(geometry);
+    }
+
+    const intersectingItems = [];
+    items.forEach((item) => {
+      // Clone first to avoid messing with the original feature as transform do an in place transformation
+      const feature = item.getFeature().clone();
+      feature.getGeometry().transform(projection, 'EPSG:4326');
+      const turfFeature = format.writeFeatureObject(feature);
+      const booleanDisjoint = disjoint(turfFeature, turfGeometry);
+
+      if (!booleanDisjoint) {
+        intersectingItems.push(item);
+      }
+    });
+
+    return intersectingItems;
+  }
+
+  /**
+   * Gets all features from the eligable layers intersecting the geometry and adds (or remove) them to SelectionManager.
    * @param {any} geometry The geometry to intersect
    * @param {any} remove true if selection should be removed insread of added
    */
@@ -785,26 +471,24 @@ const Multiselect = function Multiselect(options = {}) {
     const extent = geometry.getExtent();
 
     /**
-     * Recursively traverse all layers to discover all individual layers in group layers 
+     * Recursively traverse all layers to discover all individual layers in group layers
      * @param {any} layers
      * @param {any} groupLayer
      */
-    function traverseLayers(layers, groupLayer) {
-      for (let i = 0; i < layers.length; i += 1) {
-        const currLayer = layers[i];
+    function traverseLayers(tLayers, groupLayer) {
+      for (let i = 0; i < tLayers.length; i += 1) {
+        const currLayer = tLayers[i];
         if (!shouldSkipLayer(currLayer)) {
           if (currLayer.get('type') === 'GROUP') {
             const subLayers = currLayer.getLayers().getArray();
             traverseLayers(subLayers, currLayer);
+          } else if (geometry.getType() === 'GeometryCollection') {
+            // Explode geometry collections as they very well have disjoint extents, which would result in tons of false positives.
+            // TODO: Explode multiparts as well?
+            //       It will result in more calls, but reduces scattered geometries in a large extent.
+            geometry.getGeometries().forEach(currGeo => promises.push(extractResultsForALayer(currLayer, groupLayer, currGeo.getExtent())));
           } else {
-            if (geometry.getType() === 'GeometryCollection') {
-              // Explode geometry collections as they very well have disjoint extents, which would result in tons of false positives.
-              // TODO: Explode multiparts as well? 
-              //       It will result in more calls, but reduces scattered geometries in a large extent.
-              geometry.getGeometries().forEach(currGeo => promises.push(extractResultsForALayer(currLayer, groupLayer, currGeo.getExtent())));
-            } else {
-              promises.push(extractResultsForALayer(currLayer, groupLayer, extent));
-            }
+            promises.push(extractResultsForALayer(currLayer, groupLayer, extent));
           }
         }
       }
@@ -843,55 +527,59 @@ const Multiselect = function Multiselect(options = {}) {
   }
 
   /**
-   * General function that returns all features intersecting a geometry
-   * @param {any} items
-   * @param {any} _geometry
+   * Selects features by an already selected feature (in a global variable) with a buffer.
+   * @param {any} fRadius
    */
-  function getItemsIntersectingGeometry(items, _geometry) {
-    const geometry = _geometry.clone();
+  function fetchFeaturesBufferBuffer(fRadius) {
+    const geometry = bufferFeature.getGeometry();
+    const bufferedFeature = createBufferedFeature(geometry, fRadius);
+    displayTemporaryFeature(bufferedFeature, bufferSymbol);
 
-    const format = new Origo.ol.format.GeoJSON();
-    const projection = map.getView().getProjection();
-    let turfGeometry;
-
-    if (geometry.getType() === 'Circle') {
-      // circle is not a standard geometry. we need to create a polygon first.
-      const polygon = Origo.ol.geom.Polygon.fromCircle(geometry);
-      polygon.transform(projection, 'EPSG:4326');
-      turfGeometry = format.writeGeometryObject(polygon);
-    } else {
-      geometry.transform(projection, 'EPSG:4326');
-      turfGeometry = format.writeGeometryObject(geometry);
-    }
-
-    const intersectingItems = [];
-    items.forEach((item) => {
-      // Clone first to avoid messing with the original feature as transform do an in place transformation
-      const feature = item.getFeature().clone();
-      feature.getGeometry().transform(projection, 'EPSG:4326');
-      const turfFeature = format.writeFeatureObject(feature);
-      const booleanDisjoint = disjoint(turfFeature, turfGeometry);
-
-      if (!booleanDisjoint) {
-        intersectingItems.push(item);
-      }
-
-    });
-
-    return intersectingItems;
+    const bufferedGeometry = bufferedFeature.getGeometry();
+    updateSelectionManager(bufferedGeometry);
   }
 
   /**
-   * Helper that fetches features from server and creates an array of SelectedItem
-   * @param {any} layer
-   * @param {any} extent
-   * @param {any} selectionGroup
-   * @param {any} selectionGroupTitle
-   */
-  async function getRemoteItems(layer, extent, selectionGroup, selectionGroupTitle) {
-    const features = await fetchFeaturesFromServer(layer, extent);
-    const selectedRemoteItems = features.map((feature) => new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle));
-    return selectedRemoteItems;
+   * Displays a modal so the user can enter a buffer radius
+   * */
+  function createRadiusModal() {
+    const title = 'Ange buffert i meter (ex 10,4):';
+    const content = `<div>
+                      <form id="radius-form">
+                      <input type="number" id="bufferradius">
+                      <button type="submit">OK</button>
+                    </div></form>`;
+    const mTarget = viewer.getId();
+    const modal = Origo.ui.Modal({
+      title,
+      content,
+      target: mTarget
+    });
+    const formEl = document.getElementById('radius-form');
+
+    const bufferradiusEl = document.getElementById('bufferradius');
+    bufferradiusEl.focus();
+
+    formEl.addEventListener('submit', (e) => {
+      // Don't want to actually submit form
+      e.preventDefault();
+      const radiusVal = bufferradiusEl.value;
+      // Rely on browser to ensure type="number"
+      const fRadius = parseFloat(radiusVal);
+
+      // Not allowed to buffer inwards for 0 and 1 dimensional geometries
+      if ((!fRadius && fRadius !== 0)
+        || (fRadius <= 0 && (bufferFeature.getGeometry().getType() === 'Point'
+          || bufferFeature.getGeometry().getType() === 'MultiPoint'
+          || bufferFeature.getGeometry().getType() === 'MultiLineString'
+          || bufferFeature.getGeometry().getType() === 'LineString'))) {
+        return;
+      }
+
+      modal.closeModal();
+
+      fetchFeaturesBufferBuffer(fRadius);
+    });
   }
 
   /**
@@ -931,6 +619,312 @@ const Multiselect = function Multiselect(options = {}) {
     radiusXPosition = (e.coordinate[0] + sketch.getCenter()[0]) / 2;
     radiusYPosition = (e.coordinate[1] + sketch.getCenter()[1]) / 2;
     radiusLengthTooltip.setPosition([radiusXPosition, radiusYPosition]);
+  }
+
+  /**
+   * Invokes the select by selection flow
+   * */
+  function fetchFeaturesSelection() {
+    // Get all selected geometries and put them in a GeometryCollection for further processing
+    let geometries;
+    if (featureInfo.getSelectionLayer().getSource().getFeatures().length > 0) {
+      geometries = featureInfo.getSelectionLayer().getSource().getFeatures().map(f => f.getGeometry());
+      // Clear previous selection if it came from popup, which most likely would be a searchresult.
+      featureInfo.clear();
+    } else {
+      const selectedFeatures = selectionManager.getSelectedItems().getArray();
+      geometries = selectedFeatures.map(item => item.getFeature().getGeometry());
+    }
+    // This geometry will most likely be converted to turf, which knows nothing about circles.
+    geometries = geometries.map((currGeometry) => {
+      if (currGeometry.getType() === 'Circle') {
+        return Origo.ol.geom.Polygon.fromCircle(currGeometry);
+      }
+      return currGeometry;
+    });
+    const collection = new Origo.ol.geom.GeometryCollection(geometries);
+
+    // Store the newly created feature in a global to be picked up later.
+    bufferFeature = new Origo.ol.Feature(collection);
+    createRadiusModal();
+  }
+
+  function toggleType(button) {
+    if (activeButton) {
+      document.getElementById(activeButton.getId()).classList.remove('active');
+    }
+
+    function disableAll() {
+      clickInteraction.setActive(false);
+      boxInteraction.setActive(false);
+      circleInteraction.setActive(false);
+      polygonInteraction.setActive(false);
+      bufferInteraction.setActive(false);
+      lineInteraction.setActive(false);
+      map.un('pointermove', pointerMoveHandler);
+    }
+
+    document.getElementById(button.getId()).classList.add('active');
+    activeButton = button;
+
+    disableAll();
+
+    if (type === 'click') {
+      clickInteraction.setActive(true);
+    } else if (type === 'box') {
+      boxInteraction.setActive(true);
+    } else if (type === 'circle') {
+      circleInteraction.setActive(true);
+      map.on('pointermove', pointerMoveHandler);
+    } else if (type === 'polygon') {
+      polygonInteraction.setActive(true);
+    } else if (type === 'buffer') {
+      if (hasSelection()) {
+        fetchFeaturesSelection();
+      } else {
+        bufferInteraction.setActive(true);
+      }
+    } else if (type === 'line') {
+      lineInteraction.setActive(true);
+    }
+  }
+
+  /**
+   * Event handler for click event. Selects features by mouse click, almost like featureInfo
+   * @param {any} evt
+   */
+  function fetchFeaturesClick(evt) {
+    if (evt.type === 'singleclick') {
+      const isCtrlKeyPressed = evt.originalEvent.ctrlKey;
+
+      if (currentLayerConfig.layers) {
+        // If configured with specific layers, we can't use the featureInfo functions to fecth features as they honour visibility
+        const resolution = map.getView().getResolution();
+        const point = new Origo.ol.geom.Point(evt.coordinate);
+        // Buffer the point to make it emulate featureInfo radius.
+        const geometry = createBufferedFeature(point, resolution * pointBufferFactor).getGeometry();
+        updateSelectionManager(geometry, isCtrlKeyPressed);
+      } else {
+        // For backwards compability use featureInfo style when not using specific layer conf.
+        // The featureInfo style will honour the alternative featureInfo layer and radius configuration in the core
+        // also it unwinds clustering.
+        // Featureinfo in two steps. Concat serverside and clientside when serverside is finished
+        const pixel = evt.pixel;
+        const coordinate = evt.coordinate;
+        const layers = viewer.getQueryableLayers();
+        const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
+          coordinate,
+          map,
+          pixel,
+          clusterFeatureinfoLevel,
+          hitTolerance
+        }, viewer);
+        // Abort if clientResult is false
+        if (clientResult !== false) {
+          Origo.getFeatureInfo.getFeaturesFromRemote({
+            coordinate,
+            layers,
+            map,
+            pixel
+          }, viewer)
+            .then((data) => {
+              const serverResult = data || [];
+              const result = serverResult.concat(clientResult);
+              if (isCtrlKeyPressed) {
+                if (result.length > 0) {
+                  selectionManager.removeItems(result);
+                }
+              } else if (result.length === 1) {
+                selectionManager.addOrHighlightItem(result[0]);
+              } else if (result.length > 1) {
+                selectionManager.addItems(result);
+              }
+            });
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Event handler for rectangle interaction. Selects features by a rectangle.
+   * @param {any} evt
+   */
+  function fetchFeaturesBox(evt) {
+    const geometry = evt.feature.getGeometry();
+    updateSelectionManager(geometry);
+  }
+
+  /**
+   * Event handler för circle interaction. Selects features by a circle.
+   * @param {any} evt
+   */
+  function fetchFeaturesCircle(evt) {
+    // Things needed to be done on 'drawend'
+    // ==>
+    sketch = null;
+    removeRadiusLengthTooltip();
+    // <==
+
+    const geometry = evt.feature.getGeometry();
+    updateSelectionManager(geometry);
+  }
+
+  /**
+   * Event handler för polygon interaction. Selects features by a polygon.
+   * @param {any} evt
+   */
+  function fetchFeaturesPolygon(evt) {
+    const geometry = evt.feature.getGeometry();
+    updateSelectionManager(geometry);
+  }
+
+  /**
+   * Eventhandler for click when selecting by feature. Selects the feature to select by. If click hits severat features
+   * a modal is displayed.
+   * @param {any} evt
+   */
+  function fetchFeaturesBufferClick(evt) {
+    if (evt.type === 'singleclick') {
+      // Featurinfo in two steps. Concat serverside and clientside when serverside is finished
+      const pixel = evt.pixel;
+      const coordinate = evt.coordinate;
+      const layers = viewer.getQueryableLayers();
+      const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
+        coordinate,
+        map,
+        pixel,
+        clusterFeatureinfoLevel,
+        hitTolerance
+      }, viewer);
+      // Abort if clientResult is false
+      if (clientResult !== false) {
+        Origo.getFeatureInfo.getFeaturesFromRemote({
+          coordinate,
+          layers,
+          map,
+          pixel
+        }, viewer)
+          .then((data) => {
+            const serverResult = data || [];
+            const result = serverResult.concat(clientResult);
+            if (result.length > 0) {
+              let promise;
+              if (result.length === 1) {
+                bufferFeature = result[0].getFeature().clone();
+                promise = Promise.resolve();
+              } else if (result.length > 1) {
+                promise = createFeatureSelectionModal(result);
+              }
+              promise.then(() => createRadiusModal());
+            }
+          });
+      }
+      return false;
+    }
+    return true;
+  }
+  /**
+   * Event handler for line interaction. Selects by line.
+   * @param {any} evt
+   */
+  function fetchFeaturesLineString(evt) {
+    const geometry = evt.feature.getGeometry();
+    const resolution = map.getView().getResolution();
+    // Buffer the line to make it possible to hit points with a line
+    const bufferedGeometry = createBufferedFeature(geometry, resolution * lineBufferFactor).getGeometry();
+    updateSelectionManager(bufferedGeometry);
+  }
+
+  function addInteractions() {
+    clickInteraction = new Origo.ol.interaction.Pointer({
+      handleEvent: fetchFeaturesClick
+    });
+
+    boxInteraction = new Origo.ol.interaction.Draw({
+      source: selectSource,
+      type: 'Circle',
+      geometryFunction: Origo.ol.interaction.Draw.createBox()
+    });
+
+    circleInteraction = new Origo.ol.interaction.Draw({
+      source: selectSource,
+      type: 'Circle'
+    });
+
+    polygonInteraction = new Origo.ol.interaction.Draw({
+      source: selectSource,
+      type: 'Polygon'
+    });
+
+    bufferInteraction = new Origo.ol.interaction.Pointer({
+      handleEvent: fetchFeaturesBufferClick
+    });
+
+    lineInteraction = new Origo.ol.interaction.Draw({
+      source: selectSource,
+      type: 'LineString'
+    });
+
+    map.addInteraction(clickInteraction);
+    map.addInteraction(boxInteraction);
+    map.addInteraction(circleInteraction);
+    map.addInteraction(polygonInteraction);
+    map.addInteraction(bufferInteraction);
+    map.addInteraction(lineInteraction);
+
+    boxInteraction.on('drawend', fetchFeaturesBox);
+    circleInteraction.on('drawstart', (evt) => {
+      sketch = evt.feature.getGeometry();
+      createRadiusLengthTooltip();
+    });
+    circleInteraction.on('drawend', fetchFeaturesCircle);
+    polygonInteraction.on('drawend', fetchFeaturesPolygon);
+    lineInteraction.on('drawend', fetchFeaturesLineString);
+  }
+
+  function enableInteraction() {
+    document.getElementById(multiselectButton.getId()).classList.add('active');
+    // This accidently unhides the multselect button. But that's OK.
+    buttons.forEach((currButton) => {
+      document.getElementById(currButton.getId()).classList.remove('hidden');
+    });
+    document.getElementById(multiselectButton.getId()).classList.remove('tooltip');
+    setActive(true);
+    addInteractions();
+    document.getElementById(defaultButton.getId()).click();
+    // if features are added to selection managaer from featureinfo, this will clear that selection when activating multiselect.
+    // selectionManager.clearSelection();
+  }
+
+  function removeInteractions() {
+    map.removeInteraction(clickInteraction);
+    map.removeInteraction(boxInteraction);
+    map.removeInteraction(circleInteraction);
+    map.removeInteraction(polygonInteraction);
+    map.removeInteraction(bufferInteraction);
+    map.removeInteraction(lineInteraction);
+  }
+
+  function disableInteraction() {
+    if (activeButton) {
+      document.getElementById(activeButton.getId()).classList.remove('active');
+    }
+    document.getElementById(multiselectButton.getId()).classList.remove('active');
+    buttons.forEach((currButton) => {
+      if (currButton !== multiselectButton) {
+        document.getElementById(currButton.getId()).classList.add('hidden');
+      }
+    });
+
+    document.getElementById(multiselectButton.getId()).classList.add('tooltip');
+
+    removeInteractions();
+    removeRadiusLengthTooltip();
+    temporaryLayer.clear();
+    selectionManager.clearSelection();
+    setActive(false);
   }
 
   return Origo.ui.Component({
@@ -1053,7 +1047,6 @@ const Multiselect = function Multiselect(options = {}) {
           buttons.push(configSelectionButton);
         }
 
-
         if (defaultTool === 'click') {
           defaultButton = clickSelectionButton;
         } else if (defaultTool === 'box') {
@@ -1079,7 +1072,7 @@ const Multiselect = function Multiselect(options = {}) {
       // Draw Interaction does not need a layer, only a source is enough for it to work.
       selectSource = new Origo.ol.source.Vector();
 
-      // Use default symbols or symbols from configuration 
+      // Use default symbols or symbols from configuration
       bufferSymbol = options.bufferSymbol ? Origo.Style.createStyle({ style: options.bufferSymbol, viewer })() : Origo.Style.createStyleRule(defaultstyles.buffer);
       chooseSymbol = options.chooseSymbol ? Origo.Style.createStyle({ style: options.chooseSymbol, viewer })() : Origo.Style.createStyleRule(defaultstyles.choose);
 
@@ -1102,7 +1095,7 @@ const Multiselect = function Multiselect(options = {}) {
       let el = dom.html(htmlString);
       document.getElementById(target).appendChild(el);
 
-      buttons.forEach(currButton => {
+      buttons.forEach((currButton) => {
         htmlString = currButton.render();
         el = dom.html(htmlString);
         document.getElementById(multiselectElement.getId()).appendChild(el);
