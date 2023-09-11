@@ -1050,7 +1050,7 @@ const Multiselect = function Multiselect(options = {}) {
 
         if (showClearButton) {
           const clearButton = Origo.ui.Button({
-            cls: 'o-multiselect-config padding-small margin-bottom-smaller icon-smaller round light box-shadow hidden',
+            cls: 'o-multiselect-clear padding-small margin-bottom-smaller icon-smaller round light box-shadow hidden',
             click() {
               removeRadiusLengthTooltip();
               temporaryLayer.clear();
