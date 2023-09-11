@@ -63,6 +63,8 @@ const Multiselect = function Multiselect(options = {}) {
   const pointBufferFactor = options.pointBufferFactor ? options.pointBufferFactor : 1;
   const useWMSFeatureInfo = options.WMSHandling && options.WMSHandling.source === 'WMS';
   const alternativeLayerConfiguration = options.alternativeLayers || [];
+  const showAddToSelectionButton = options.showAddToSelectionButton === true;
+  let addToSelection = options.addToSelection !== false;
 
   function setActive(state) {
     isActive = state;
@@ -423,6 +425,37 @@ const Multiselect = function Multiselect(options = {}) {
   }
 
   /**
+   * Displays the circe radius when selecting by circle.
+   * */
+  function createRadiusLengthTooltip() {
+    if (radiusLengthTooltipElement) {
+      radiusLengthTooltipElement.parentNode.removeChild(radiusLengthTooltipElement);
+    }
+
+    radiusLengthTooltipElement = document.createElement('div');
+    radiusLengthTooltipElement.className = 'o-tooltip o-tooltip-measure';
+
+    radiusLengthTooltip = new Origo.ol.Overlay({
+      element: radiusLengthTooltipElement,
+      offset: [0, 0],
+      positioning: 'bottom-center',
+      stopEvent: false
+    });
+
+    map.addOverlay(radiusLengthTooltip);
+  }
+
+  function removeRadiusLengthTooltip() {
+    map.removeOverlay(radiusLengthTooltip);
+  }
+
+  function clearSelection() {
+    removeRadiusLengthTooltip();
+    temporaryLayer.clear();
+    selectionManager.clearSelection();
+  }
+
+  /**
    * General function that returns all features intersecting a geometry
    * @param {any} items
    * @param {any} _geometry
@@ -466,6 +499,9 @@ const Multiselect = function Multiselect(options = {}) {
    * @param {any} remove true if selection should be removed insread of added
    */
   async function updateSelectionManager(geometry, remove) {
+    if (!addToSelection) {
+      clearSelection();
+    }
     const promises = [];
     let layers;
     const extent = geometry.getExtent();
@@ -583,31 +619,6 @@ const Multiselect = function Multiselect(options = {}) {
   }
 
   /**
-   * Displays the circe radius when selecting by circle.
-   * */
-  function createRadiusLengthTooltip() {
-    if (radiusLengthTooltipElement) {
-      radiusLengthTooltipElement.parentNode.removeChild(radiusLengthTooltipElement);
-    }
-
-    radiusLengthTooltipElement = document.createElement('div');
-    radiusLengthTooltipElement.className = 'o-tooltip o-tooltip-measure';
-
-    radiusLengthTooltip = new Origo.ol.Overlay({
-      element: radiusLengthTooltipElement,
-      offset: [0, 0],
-      positioning: 'bottom-center',
-      stopEvent: false
-    });
-
-    map.addOverlay(radiusLengthTooltip);
-  }
-
-  function removeRadiusLengthTooltip() {
-    map.removeOverlay(radiusLengthTooltip);
-  }
-
-  /**
    * Event handler that updates the radius when slecting by circle
    * @param {any} e
    */
@@ -647,6 +658,16 @@ const Multiselect = function Multiselect(options = {}) {
     // Store the newly created feature in a global to be picked up later.
     bufferFeature = new Origo.ol.Feature(collection);
     createRadiusModal();
+  }
+
+  function toggleAddToSelection(button) {
+    if (addToSelection) {
+      addToSelection = false;
+      button.setState('initial');
+    } else {
+      addToSelection = true;
+      button.setState('active');
+    }
   }
 
   function toggleType(button) {
@@ -705,6 +726,9 @@ const Multiselect = function Multiselect(options = {}) {
         const geometry = createBufferedFeature(point, resolution * pointBufferFactor).getGeometry();
         updateSelectionManager(geometry, isCtrlKeyPressed);
       } else {
+        if (!addToSelection) {
+          clearSelection();
+        }
         // For backwards compability use featureInfo style when not using specific layer conf.
         // The featureInfo style will honour the alternative featureInfo layer and radius configuration in the core
         // also it unwinds clustering.
@@ -921,14 +945,13 @@ const Multiselect = function Multiselect(options = {}) {
     document.getElementById(multiselectButton.getId()).classList.add('tooltip');
 
     removeInteractions();
-    removeRadiusLengthTooltip();
-    temporaryLayer.clear();
-    selectionManager.clearSelection();
+    clearSelection();
     setActive(false);
   }
 
   return Origo.ui.Component({
     name: 'multiselection',
+    clearSelection,
     onInit() {
       if (clickSelection || boxSelection || circleSelection || polygonSelection || bufferSelection) {
         multiselectElement = Origo.ui.Element({
@@ -1045,6 +1068,20 @@ const Multiselect = function Multiselect(options = {}) {
             tooltipPlacement: 'east'
           });
           buttons.push(configSelectionButton);
+        }
+
+        if (showAddToSelectionButton) {
+          const addToSelectionButton = Origo.ui.Button({
+            cls: 'o-multiselect-add padding-small margin-bottom-smaller icon-smaller round light box-shadow hidden',
+            click() {
+              toggleAddToSelection(this);
+            },
+            state: addToSelection ? 'active' : 'initial',
+            icon: '#ic_add_box_24px',
+            tooltipText: 'Lägg till i urval',
+            tooltipPlacement: 'east'
+          });
+          buttons.push(addToSelectionButton);
         }
 
         if (defaultTool === 'click') {
