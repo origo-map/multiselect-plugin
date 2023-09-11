@@ -63,6 +63,7 @@ const Multiselect = function Multiselect(options = {}) {
   const pointBufferFactor = options.pointBufferFactor ? options.pointBufferFactor : 1;
   const useWMSFeatureInfo = options.WMSHandling && options.WMSHandling.source === 'WMS';
   const alternativeLayerConfiguration = options.alternativeLayers || [];
+  const showClearButton = options.showClearButton === true;
   const showAddToSelectionButton = options.showAddToSelectionButton === true;
   let addToSelection = options.addToSelection !== false;
 
@@ -1082,6 +1083,19 @@ const Multiselect = function Multiselect(options = {}) {
             tooltipPlacement: 'east'
           });
           buttons.push(addToSelectionButton);
+        }
+
+        if (showClearButton) {
+          const clearButton = Origo.ui.Button({
+            cls: 'o-multiselect-clear padding-small margin-bottom-smaller icon-smaller round light box-shadow hidden',
+            click() {
+              clearSelection();
+            },
+            icon: '#ic_delete_24px',
+            tooltipText: 'Rensa',
+            tooltipPlacement: 'east'
+          });
+          buttons.push(clearButton);
         }
 
         if (defaultTool === 'click') {
