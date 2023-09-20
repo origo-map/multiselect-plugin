@@ -764,6 +764,10 @@ const Multiselect = function Multiselect(options = {}) {
               } else if (result.length > 1) {
                 selectionManager.addItems(result);
               }
+              const modalLinks = document.getElementsByClassName('o-identify-link-modal');
+              for (let i = 0; i < modalLinks.length; i += 1) {
+                viewer.getFeatureinfo().addLinkListener(modalLinks[i]);
+              }
             });
         }
         return false;
