@@ -536,7 +536,7 @@ const Multiselect = function Multiselect(options = {}) {
       layers = currentLayerConfig.layers.map(l => viewer.getLayer(l));
     } else {
       // Use queryable layers when no config exists (default behaviour)
-      layers = viewer.getQueryableLayers();
+      layers = viewer.getQueryableLayers(true);
     }
 
     // This call populates the promises array, so on the next line we can await it
@@ -736,7 +736,7 @@ const Multiselect = function Multiselect(options = {}) {
         // Featureinfo in two steps. Concat serverside and clientside when serverside is finished
         const pixel = evt.pixel;
         const coordinate = evt.coordinate;
-        const layers = viewer.getQueryableLayers();
+        const layers = viewer.getQueryableLayers(true);
         const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
           coordinate,
           map,
@@ -819,7 +819,7 @@ const Multiselect = function Multiselect(options = {}) {
       // Featurinfo in two steps. Concat serverside and clientside when serverside is finished
       const pixel = evt.pixel;
       const coordinate = evt.coordinate;
-      const layers = viewer.getQueryableLayers();
+      const layers = viewer.getQueryableLayers(true);
       const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
         coordinate,
         map,
