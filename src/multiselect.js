@@ -727,7 +727,7 @@ const Multiselect = function Multiselect(options = {}) {
         const geometry = createBufferedFeature(point, resolution * pointBufferFactor).getGeometry();
         updateSelectionManager(geometry, isCtrlKeyPressed);
       } else {
-        if (!addToSelection) {
+        if (!addToSelection && !isCtrlKeyPressed) {
           clearSelection();
         }
         // For backwards compability use featureInfo style when not using specific layer conf.
