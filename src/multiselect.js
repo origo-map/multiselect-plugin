@@ -130,8 +130,8 @@ const Multiselect = function Multiselect(options = {}) {
 
       for (let index = 0; index < featureSelectors.length; index++) {
         const f = featureSelectors[index];
-        f.addEventListener('click', (e) => {
-          bufferFeature = features.find(ff => ff.getId().toString() === this.id).clone();
+        f.addEventListener('click', function (e) {
+          bufferFeature = features.find((ff) => ff.getId().toString() === this.id).clone();
           modal.closeModal();
           resolve();
           // Remove highlight here if user happens to close the buffer modal without submitting, as we don't know when that happens
@@ -139,14 +139,15 @@ const Multiselect = function Multiselect(options = {}) {
           temporaryLayer.clear();
           e.stopPropagation();
         });
-        f.addEventListener('mouseover', () => {
-          const hoverFeature = features.find(ff => ff.getId().toString() === this.id).clone();
+        f.addEventListener('mouseover', function() {
+          const hoverFeature = features.find((ff) => ff.getId().toString() === this.id).clone();
           displayTemporaryFeature(hoverFeature, chooseSymbol);
+         
         });
-        f.addEventListener('mouseout', () => {
+        f.addEventListener('mouseout', function () {
           temporaryLayer.clear();
         });
-      };
+      }
     });
   }
 
