@@ -74,6 +74,7 @@ const Multiselect = function Multiselect(options = {}) {
   function toggleMultiselection() {
     const detail = {
       name: 'multiselection',
+      disableOnClose: true,
       active: !isActive
     };
     viewer.dispatch('toggleClickInteraction', detail);
@@ -737,7 +738,8 @@ const Multiselect = function Multiselect(options = {}) {
         // Featureinfo in two steps. Concat serverside and clientside when serverside is finished
         const pixel = evt.pixel;
         const coordinate = evt.coordinate;
-        const layers = viewer.getQueryableLayers(true);
+        const queryableLayers = viewer.getQueryableLayers(true);
+        const layers = queryableLayers.filter((layer) => !shouldSkipLayer(layer));
         const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
           coordinate,
           map,
@@ -820,7 +822,8 @@ const Multiselect = function Multiselect(options = {}) {
       // Featurinfo in two steps. Concat serverside and clientside when serverside is finished
       const pixel = evt.pixel;
       const coordinate = evt.coordinate;
-      const layers = viewer.getQueryableLayers(true);
+      const queryableLayers = viewer.getQueryableLayers(true);
+      const layers = queryableLayers.filter((layer) => !shouldSkipLayer(layer));
       const clientResult = Origo.getFeatureInfo.getFeaturesAtPixel({
         coordinate,
         map,
@@ -1140,6 +1143,8 @@ const Multiselect = function Multiselect(options = {}) {
       viewer.on('toggleClickInteraction', (detail) => {
         if (detail.name === 'multiselection' && detail.active) {
           enableInteraction();
+        } else if (detail.name === 'multiselection' && detail.active === false && detail.disableOnClose !== true) {
+          // DO NOTHING!
         } else {
           disableInteraction();
         }
