@@ -127,7 +127,8 @@ const Multiselect = function Multiselect(options = {}) {
       });
       const featureSelectors = document.getElementsByClassName('featureSelectorItem');
 
-      featureSelectors.forEach((f) => {
+      for (let index = 0; index < featureSelectors.length; index++) {
+        const f = featureSelectors[index];
         f.addEventListener('click', (e) => {
           bufferFeature = features.find(ff => ff.getId().toString() === this.id).clone();
           modal.closeModal();
@@ -144,7 +145,7 @@ const Multiselect = function Multiselect(options = {}) {
         f.addEventListener('mouseout', () => {
           temporaryLayer.clear();
         });
-      });
+      };
     });
   }
 
