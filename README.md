@@ -63,6 +63,7 @@ currentLayerConfig | Index of the selected layerConfiguration at startup | 0
 pointBufferFactor | How much a point should be buffered before intersecting when using click tool. Does not apply if active configuration is All visible, as that uses featureInfo hitTolerance setting. | 1
 bufferSymbol | Name of a symbol in origo configuration to use as symbol for buffered objects. Symbol is always a polygon. | A built-in symbol
 chooseSymbol | Name of a symbol in origo configuration to use as symbol for highlighted features when choosing which feature to buffer. Symbol should handle point, line and polygon. | A built-in symbol
+warnOnNoHits | Wether an alert should be displayed or not when no features to select is found. (bool) | false
 
 #### layerConfiguration
 A layerConfiguration specifies in which layers features are selected. The default behaviour is to select features in all currently visible
