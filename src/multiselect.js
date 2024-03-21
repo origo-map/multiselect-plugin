@@ -66,6 +66,15 @@ const Multiselect = function Multiselect(options = {}) {
   const showClearButton = options.showClearButton === true;
   const showAddToSelectionButton = options.showAddToSelectionButton === true;
   let addToSelection = options.addToSelection !== false;
+  const warnOnNoHits = options.warnOnNoHits === true;
+  /**
+   * True if origo exposes spinner. Older origo versions don't expose it. In that case we don't do anything.
+   */
+  const hasSpinner = !!Origo.Loader;
+  /**
+   * Handle that spinner uses to cancel a pending spinner. There can be only one spinner at any given time as it is modal.
+   */
+  let timerId = 0;
 
   function setActive(state) {
     isActive = state;
@@ -498,73 +507,130 @@ const Multiselect = function Multiselect(options = {}) {
   }
 
   /**
+   * Displays a spinner. Call hideSpinner() when you are done, preferrably within a finally clause to avoid leaving spinner lingering around.
+   * Don't call several times without hide between, but the modal nature will prevent user from doing that.
+   */
+  function showSpinner() {
+    // Show spinner if the Origo version exposes it.
+    if (hasSpinner) {
+      // Wait a little while before showing spinner to avoid flicking if request is quick.
+      // If there are no network requests (only strategy all WFS) chance that it will be finished within this time limit is very large.
+      // Could of course flick if requests take just a wee bit more than the delay, but in this way we
+      // get rid of the really quick ones.
+      // Drawback is if the timeconsuming operation is sync, the spinner won't be shown as the event won't be scheduled to run until
+      // cpu bound operation is finished.
+      timerId = setTimeout(() => {
+        Origo.Loader.show();
+      }, 100);
+    }
+  }
+
+  /**
+   * Hides the spinner. Safe to call even if no spinner is visible.
+   */
+  function hideSpinner() {
+    if (hasSpinner) {
+      // Abort if it hasn't fired yet. Safe to do even if timer has fired so no need to check.
+      clearTimeout(timerId);
+      // No harm in hiding even if it hasn't been shown yet.
+      Origo.Loader.hide();
+    }
+  }
+
+  function showEmptyResultModal() {
+    if (warnOnNoHits) {
+      const mTarget = viewer.getId();
+      Origo.ui.Modal({
+        // Make title and content configurable for language support?
+        title: 'Observera!',
+        content: 'Sökningen gav inga träffar',
+        target: mTarget
+      });
+    }
+  }
+
+  /**
    * Gets all features from the eligable layers intersecting the geometry and adds (or remove) them to SelectionManager.
    * @param {any} geometry The geometry to intersect
    * @param {any} remove true if selection should be removed insread of added
    */
   async function updateSelectionManager(geometry, remove) {
+    showSpinner();
     if (!addToSelection) {
       clearSelection();
     }
-    const promises = [];
-    let layers;
-    const extent = geometry.getExtent();
+    try {
+      const promises = [];
+      let layers;
+      const extent = geometry.getExtent();
 
-    /**
-     * Recursively traverse all layers to discover all individual layers in group layers
-     * @param {any} layers
-     * @param {any} groupLayer
-     */
-    function traverseLayers(tLayers, groupLayer) {
-      for (let i = 0; i < tLayers.length; i += 1) {
-        const currLayer = tLayers[i];
-        if (!shouldSkipLayer(currLayer)) {
-          if (currLayer.get('type') === 'GROUP') {
-            const subLayers = currLayer.getLayers().getArray();
-            traverseLayers(subLayers, currLayer);
-          } else if (geometry.getType() === 'GeometryCollection') {
-            // Explode geometry collections as they very well have disjoint extents, which would result in tons of false positives.
-            // TODO: Explode multiparts as well?
-            //       It will result in more calls, but reduces scattered geometries in a large extent.
-            geometry.getGeometries().forEach(currGeo => promises.push(extractResultsForALayer(currLayer, groupLayer, currGeo.getExtent())));
-          } else {
-            promises.push(extractResultsForALayer(currLayer, groupLayer, extent));
+      /**
+       * Recursively traverse all layers to discover all individual layers in group layers
+       * @param {any} layers
+       * @param {any} groupLayer
+       */
+      function traverseLayers(tLayers, groupLayer) {
+        for (let i = 0; i < tLayers.length; i += 1) {
+          const currLayer = tLayers[i];
+          if (!shouldSkipLayer(currLayer)) {
+            if (currLayer.get('type') === 'GROUP') {
+              const subLayers = currLayer.getLayers().getArray();
+              traverseLayers(subLayers, currLayer);
+            } else if (geometry.getType() === 'GeometryCollection') {
+              // Explode geometry collections as they very well have disjoint extents, which would result in tons of false positives.
+              // TODO: Explode multiparts as well?
+              //       It will result in more calls, but reduces scattered geometries in a large extent.
+              geometry.getGeometries().forEach(currGeo => promises.push(extractResultsForALayer(currLayer, groupLayer, currGeo.getExtent())));
+            } else {
+              promises.push(extractResultsForALayer(currLayer, groupLayer, extent));
+            }
           }
         }
       }
-    }
 
-    if (currentLayerConfig.layers) {
-      // Use configured layers
-      layers = currentLayerConfig.layers.map(l => viewer.getLayer(l));
-    } else {
-      // Use queryable layers when no config exists (default behaviour)
-      layers = viewer.getQueryableLayers(true);
-    }
-
-    // This call populates the promises array, so on the next line we can await it
-    traverseLayers(layers);
-    const items = await Promise.all(promises);
-    // Is an array of arrays, we want an array.
-    const allItems = items.flat();
-
-    // Narrow down selection to only contain thos whose actual geometry intersects the selection geometry.
-    // We could implement different spatial relations, i.e contains, is contained etc. But for now only intersect is supported.
-    const intersectingItems = getItemsIntersectingGeometry(allItems, geometry);
-
-    // Add them to selection
-    // handle removal for point when ctrl-click
-    if (remove) {
-      if (intersectingItems.length > 0) {
-        selectionManager.removeItems(intersectingItems);
+      if (currentLayerConfig.layers) {
+        // Use configured layers
+        layers = currentLayerConfig.layers.map(l => viewer.getLayer(l));
+      } else {
+        // Use queryable layers when no config exists (default behaviour)
+        layers = viewer.getQueryableLayers(true);
       }
-    } else if (intersectingItems.length === 1) {
-      selectionManager.addOrHighlightItem(intersectingItems[0]);
-    } else if (intersectingItems.length > 1) {
-      selectionManager.addItems(intersectingItems);
+
+      // This call populates the promises array, so on the next line we can await it
+      traverseLayers(layers);
+
+      // Collect all respones
+      const items = await Promise.all(promises);
+
+      // Is an array of arrays, we want an array.
+      const allItems = items.flat();
+
+      // Narrow down selection to only contain thos whose actual geometry intersects the selection geometry.
+      // We could implement different spatial relations, i.e contains, is contained etc. But for now only intersect is supported.
+      const intersectingItems = getItemsIntersectingGeometry(allItems, geometry);
+
+      // Add them to selection
+      // handle removal for point when ctrl-click
+      if (remove) {
+        if (intersectingItems.length > 0) {
+          selectionManager.removeItems(intersectingItems);
+        }
+      } else if (intersectingItems.length === 1) {
+        selectionManager.addOrHighlightItem(intersectingItems[0]);
+      } else if (intersectingItems.length > 1) {
+        selectionManager.addItems(intersectingItems);
+      }
+      // Notify user if result was empty to avoid them waiting for ever
+      if (intersectingItems.length === 0) {
+        showEmptyResultModal();
+      }
     }
-    // TODO: Notify user if result was empty to avoid them waiting for ever
+    finally {
+      hideSpinner();
+    }
   }
+
+ 
 
   /**
    * Selects features by an already selected feature (in a global variable) with a buffer.
@@ -735,7 +801,8 @@ const Multiselect = function Multiselect(options = {}) {
         }
         // For backwards compability use featureInfo style when not using specific layer conf.
         // The featureInfo style will honour the alternative featureInfo layer and radius configuration in the core
-        // also it unwinds clustering.
+        // also it unwinds clustering. But it does not support Multiselect alternative layers or extended WMS handling (which is not necessary
+        // as a WMS layer will work out of the box for points)
         // Featureinfo in two steps. Concat serverside and clientside when serverside is finished
         const pixel = evt.pixel;
         const coordinate = evt.coordinate;
@@ -750,6 +817,7 @@ const Multiselect = function Multiselect(options = {}) {
         }, viewer);
         // Abort if clientResult is false
         if (clientResult !== false) {
+          showSpinner();
           Origo.getFeatureInfo.getFeaturesFromRemote({
             coordinate,
             layers,
@@ -759,6 +827,10 @@ const Multiselect = function Multiselect(options = {}) {
             .then((data) => {
               const serverResult = data || [];
               const result = serverResult.concat(clientResult);
+              if (result.length === 0) {
+                // Notify user if result was empty to avoid them waiting for ever
+                showEmptyResultModal();
+              }
               if (isCtrlKeyPressed) {
                 if (result.length > 0) {
                   selectionManager.removeItems(result);
@@ -772,7 +844,10 @@ const Multiselect = function Multiselect(options = {}) {
               for (let i = 0; i < modalLinks.length; i += 1) {
                 viewer.getFeatureinfo().addLinkListener(modalLinks[i]);
               }
-            });
+            })
+            .finally(() => {
+              hideSpinner();
+            }) ;
         }
         return false;
       }
