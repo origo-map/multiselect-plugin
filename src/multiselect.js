@@ -109,7 +109,7 @@ const Multiselect = function Multiselect(options = {}) {
    */
   function createFeatureSelectionModal(items) {
     // extracting features
-    const features = items.map(item => item.getFeature());
+    const features = items.map((item) => item.getFeature());
     const featuresList = items.map((item) => {
       const layerAttributes = item.getLayer().get('attributes');
       let bufferAttribute;
@@ -148,12 +148,11 @@ const Multiselect = function Multiselect(options = {}) {
           temporaryLayer.clear();
           e.stopPropagation();
         });
-        f.addEventListener('mouseover', function() {
+        f.addEventListener('mouseover', function () {
           const hoverFeature = features.find((ff) => ff.getId().toString() === this.id).clone();
           displayTemporaryFeature(hoverFeature, chooseSymbol);
-         
         });
-        f.addEventListener('mouseout', function () {
+        f.addEventListener('mouseout', () => {
           temporaryLayer.clear();
         });
       }
@@ -239,7 +238,7 @@ const Multiselect = function Multiselect(options = {}) {
       //       It would probaby also be necessary to explode multiparts in that case, as the parts may be scattered all over a large extent
       //       Exploding could be done here directly to a collection, or later when collection is exploded. The latter would also explode multiparts
       //       that were not buffered (when radius = 0).
-      featureEach(bufferedTurfFeature, currFeat => geoms.push(currFeat.geometry));
+      featureEach(bufferedTurfFeature, (currFeat) => geoms.push(currFeat.geometry));
       bufferedTurfFeature = geometryCollection(geoms);
     }
     const bufferedOLFeature = format.readFeature(bufferedTurfFeature);
@@ -254,7 +253,7 @@ const Multiselect = function Multiselect(options = {}) {
    */
   function shouldSkipLayer(layer) {
     if (currentLayerConfig.exclude) {
-      if (currentLayerConfig.exclude.some(l => layer.get('name') === l)) {
+      if (currentLayerConfig.exclude.some((l) => layer.get('name') === l)) {
         // Explicitly excluded by config
         return true;
       }
@@ -266,7 +265,6 @@ const Multiselect = function Multiselect(options = {}) {
     }
 
     // If we got here it means that no config is present, or current config is just a named default setting (use visible)
-
 
     // We need to check manually if layer is in the visible range considering maxResolution and minResolution for a layer.
     // For click we do not need this check because the function "forEachFeatureAtPixel" on the map object takes care of that out of the box.
@@ -292,7 +290,10 @@ const Multiselect = function Multiselect(options = {}) {
    * @return {feature[]} array of features
    */
   async function fetchFeaturesFromServer(layer, extent) {
-    const fetchedFeatures = await Origo.getFeature(null, layer, viewer.getMapSource(), viewer.getProjectionCode(), viewer.getProjection(), extent);
+    const fetchedFeatures = await Origo.getFeature(null, layer, viewer.getMapSource(), viewer.getProjectionCode(), viewer.getProjection(), extent).catch((err) => {
+      console.error(`Unable to query layer ${layer.get('title')} (${layer.get('name')})`);
+      throw err;
+    });
     return fetchedFeatures;
   }
 
@@ -305,8 +306,11 @@ const Multiselect = function Multiselect(options = {}) {
    */
   async function getRemoteItems(layer, extent, selectionGroup, selectionGroupTitle) {
     const features = await fetchFeaturesFromServer(layer, extent);
-    const selectedRemoteItems = features.map(feature => new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle));
-    return selectedRemoteItems;
+    if (features) {
+      const selectedRemoteItems = features.map((feature) => new Origo.SelectedItem(feature, layer, map, selectionGroup, selectionGroupTitle));
+      return selectedRemoteItems;
+    }
+    return [];
   }
 
   /**
@@ -329,7 +333,7 @@ const Multiselect = function Multiselect(options = {}) {
     }
 
     // First see if we have a config that decides where to query
-    const currLayerConfig = alternativeLayerConfiguration.find(i => i.name === layer.get('name'));
+    const currLayerConfig = alternativeLayerConfiguration.find((i) => i.name === layer.get('name'));
     // If layer is configured to do something special, obey that. Otherwise default to something.
     if (currLayerConfig) {
       const promises = [];
@@ -431,7 +435,7 @@ const Multiselect = function Multiselect(options = {}) {
         // It is only implemented as it was the default implementation from the start and left for backwards compatibility.
         const remoteItems = await getRemoteItems(layer, extent, selectionGroup, selectionGroupTitle);
         // Can't have both local and remote in same layer, so this is safe.
-        selectedItems = remoteItems;
+        selectedItems = remoteItems || [];
       }
     }
     return selectedItems;
@@ -580,7 +584,7 @@ const Multiselect = function Multiselect(options = {}) {
               // Explode geometry collections as they very well have disjoint extents, which would result in tons of false positives.
               // TODO: Explode multiparts as well?
               //       It will result in more calls, but reduces scattered geometries in a large extent.
-              geometry.getGeometries().forEach(currGeo => promises.push(extractResultsForALayer(currLayer, groupLayer, currGeo.getExtent())));
+              geometry.getGeometries().forEach((currGeo) => promises.push(extractResultsForALayer(currLayer, groupLayer, currGeo.getExtent())));
             } else {
               promises.push(extractResultsForALayer(currLayer, groupLayer, extent));
             }
@@ -590,21 +594,19 @@ const Multiselect = function Multiselect(options = {}) {
 
       if (currentLayerConfig.layers) {
         // Use configured layers
-        layers = currentLayerConfig.layers.map(l => viewer.getLayer(l));
+        layers = currentLayerConfig.layers.map((l) => viewer.getLayer(l));
       } else {
         // Use queryable layers when no config exists (default behaviour)
         layers = viewer.getQueryableLayers(true);
       }
-
       // This call populates the promises array, so on the next line we can await it
       traverseLayers(layers);
-
-      // Collect all respones
-      const items = await Promise.all(promises);
+      const fulfilled = [];
+      const rejected = [];
+      await Promise.allSettled(promises).then((results) => results.forEach((result) => (result.status === 'fulfilled' ? fulfilled.push(result.value) : rejected.push(result))));
 
       // Is an array of arrays, we want an array.
-      const allItems = items.flat();
-
+      const allItems = fulfilled.flat();
       // Narrow down selection to only contain thos whose actual geometry intersects the selection geometry.
       // We could implement different spatial relations, i.e contains, is contained etc. But for now only intersect is supported.
       const intersectingItems = getItemsIntersectingGeometry(allItems, geometry);
@@ -624,13 +626,10 @@ const Multiselect = function Multiselect(options = {}) {
       if (intersectingItems.length === 0) {
         showEmptyResultModal();
       }
-    }
-    finally {
+    } finally {
       hideSpinner();
     }
   }
-
- 
 
   /**
    * Selects features by an already selected feature (in a global variable) with a buffer.
@@ -709,12 +708,12 @@ const Multiselect = function Multiselect(options = {}) {
     // Get all selected geometries and put them in a GeometryCollection for further processing
     let geometries;
     if (featureInfo.getSelectionLayer().getSource().getFeatures().length > 0) {
-      geometries = featureInfo.getSelectionLayer().getSource().getFeatures().map(f => f.getGeometry());
+      geometries = featureInfo.getSelectionLayer().getSource().getFeatures().map((f) => f.getGeometry());
       // Clear previous selection if it came from popup, which most likely would be a searchresult.
       featureInfo.clear();
     } else {
       const selectedFeatures = selectionManager.getSelectedItems().getArray();
-      geometries = selectedFeatures.map(item => item.getFeature().getGeometry());
+      geometries = selectedFeatures.map((item) => item.getFeature().getGeometry());
     }
     // This geometry will most likely be converted to turf, which knows nothing about circles.
     geometries = geometries.map((currGeometry) => {
@@ -847,7 +846,7 @@ const Multiselect = function Multiselect(options = {}) {
             })
             .finally(() => {
               hideSpinner();
-            }) ;
+            });
         }
         return false;
       }
