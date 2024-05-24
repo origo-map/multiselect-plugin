@@ -552,6 +552,28 @@ const Multiselect = function Multiselect(options = {}) {
       });
     }
   }
+  /**
+   * Builds the content including async content
+   * @param {SelectedItem[]} items Array of SelectedItem for which to add async content
+   */
+  async function buildContentAsync(items) {
+    // Check if we actually can load async content. createContentAsync is a quite recent addition to Origo.
+    if (items.length > 0 && typeof items[0].createContentAsync === 'function') {
+      const requests = [];
+      items.forEach(currItem => {
+        requests.push(currItem.createContentAsync());
+      });
+      // Wait for all requests. If there are no attachments configured there will be no request sent
+      try {
+        await Promise.all(requests);
+      } catch (err) {
+        console.log(err);
+        alert('Kunde inte hämta relaterade objekt. En del fält från relaterade objekt kommer att vara tomma.');
+      }
+    }
+  }
+
+
 
   /**
    * Gets all features from the eligable layers intersecting the geometry and adds (or remove) them to SelectionManager.
@@ -617,10 +639,13 @@ const Multiselect = function Multiselect(options = {}) {
         if (intersectingItems.length > 0) {
           selectionManager.removeItems(intersectingItems);
         }
-      } else if (intersectingItems.length === 1) {
-        selectionManager.addOrHighlightItem(intersectingItems[0]);
-      } else if (intersectingItems.length > 1) {
-        selectionManager.addItems(intersectingItems);
+      } else {
+        await buildContentAsync(intersectingItems);
+        if (intersectingItems.length === 1) {
+          selectionManager.addOrHighlightItem(intersectingItems[0]);
+        } else if (intersectingItems.length > 1) {
+          selectionManager.addItems(intersectingItems);
+        }
       }
       // Notify user if result was empty to avoid them waiting for ever
       if (intersectingItems.length === 0) {
@@ -834,10 +859,14 @@ const Multiselect = function Multiselect(options = {}) {
                 if (result.length > 0) {
                   selectionManager.removeItems(result);
                 }
-              } else if (result.length === 1) {
-                selectionManager.addOrHighlightItem(result[0]);
-              } else if (result.length > 1) {
-                selectionManager.addItems(result);
+              } else {
+                buildContentAsync(result).then(() => {
+                  if (result.length === 1) {
+                    selectionManager.addOrHighlightItem(result[0]);
+                  } else if (result.length > 1) {
+                    selectionManager.addItems(result);
+                  }
+                });
               }
               const modalLinks = document.getElementsByClassName('o-identify-link-modal');
               for (let i = 0; i < modalLinks.length; i += 1) {
