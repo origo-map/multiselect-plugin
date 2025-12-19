@@ -1021,7 +1021,7 @@ const Multiselect = function Multiselect(options = {}) {
     lineInteraction.on('drawend', fetchFeaturesLineString);
   }
 
-  function enableInteraction() {
+  function enableInteraction(keepActiveTool) {
     document.getElementById(multiselectButton.getId()).classList.add('active');
     // This accidently unhides the multselect button. But that's OK.
     buttons.forEach((currButton) => {
@@ -1030,7 +1030,8 @@ const Multiselect = function Multiselect(options = {}) {
     document.getElementById(multiselectButton.getId()).classList.remove('tooltip');
     setActive(true);
     addInteractions();
-    document.getElementById(defaultButton.getId()).click();
+    const toolToActivate = keepActiveTool ? activeButton : defaultButton;
+    document.getElementById(toolToActivate.getId()).click();
     // if features are added to selection managaer from featureinfo, this will clear that selection when activating multiselect.
     // selectionManager.clearSelection();
   }
@@ -1246,7 +1247,7 @@ const Multiselect = function Multiselect(options = {}) {
 
       viewer.on('toggleClickInteraction', (detail) => {
         if (detail.name === 'multiselection' && detail.active) {
-          enableInteraction();
+          enableInteraction(detail.keepActiveTool);
         } else if (detail.name === 'multiselection' && detail.active === false && detail.disableOnClose !== true) {
           // We get here when infowindow is closed as it sends 'multiselection' and active=false but does not send any
           // disableOnClose. This is most likely an unintentional behaviour. InfoWindow should probably send 'featureInfo' as
@@ -1258,12 +1259,14 @@ const Multiselect = function Multiselect(options = {}) {
           // as featureInfo subscribed to the event before us.
 
           // Remove interactions as the new event will trigger addition of them again
+          // We could call disableInteraction, but that would close and open the menu which could cause flickering
+          // reset active tool
           removeInteractions();
-
+          clearSelection();
           // Deactivte featureInfo and activate ourselves again
           const newdetail = {
             name: 'multiselection',
-            disableOnClose: true,
+            keepActiveTool: true,
             active: true
           };
           viewer.dispatch('toggleClickInteraction', newdetail);
