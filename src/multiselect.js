@@ -67,6 +67,7 @@ const Multiselect = function Multiselect(options = {}) {
   const showAddToSelectionButton = options.showAddToSelectionButton === true;
   let addToSelection = options.addToSelection !== false;
   const warnOnNoHits = options.warnOnNoHits === true;
+  const stayActiveOnClose = options.stayActiveOnClose === true;
   /**
    * True if origo exposes spinner. Older origo versions don't expose it. In that case we don't do anything.
    */
@@ -83,7 +84,7 @@ const Multiselect = function Multiselect(options = {}) {
   function toggleMultiselection() {
     const detail = {
       name: 'multiselection',
-      disableOnClose: true,
+      fromSelf: true,
       active: !isActive
     };
     viewer.dispatch('toggleClickInteraction', detail);
@@ -1248,9 +1249,9 @@ const Multiselect = function Multiselect(options = {}) {
       viewer.on('toggleClickInteraction', (detail) => {
         if (detail.name === 'multiselection' && detail.active) {
           enableInteraction(detail.keepActiveTool);
-        } else if (detail.name === 'multiselection' && detail.active === false && detail.disableOnClose !== true) {
+        } else if (detail.name === 'multiselection' && detail.active === false && detail.fromSelf !== true && isActive && stayActiveOnClose) {
           // We get here when infowindow is closed as it sends 'multiselection' and active=false but does not send any
-          // disableOnClose. This is most likely an unintentional behaviour. InfoWindow should probably send 'featureInfo' as
+          // fromSelf. This is most likely an unintentional behaviour. InfoWindow should probably send 'featureInfo' as
           // name, but it wasn't changed when it was decided that infowindow and selectionmanager was left in the core but
           // multiselect was broken out. Anyhow, if we want to be able to close the window without closing the tool we must
           // indentify it is an external close, which we do by the lack of disableOnClose as we always set that to true
