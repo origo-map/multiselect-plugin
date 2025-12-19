@@ -1248,7 +1248,25 @@ const Multiselect = function Multiselect(options = {}) {
         if (detail.name === 'multiselection' && detail.active) {
           enableInteraction();
         } else if (detail.name === 'multiselection' && detail.active === false && detail.disableOnClose !== true) {
-          // DO NOTHING!
+          // We get here when infowindow is closed as it sends 'multiselection' and active=false but does not send any
+          // disableOnClose. This is most likely an unintentional behaviour. InfoWindow should probably send 'featureInfo' as
+          // name, but it wasn't changed when it was decided that infowindow and selectionmanager was left in the core but
+          // multiselect was broken out. Anyhow, if we want to be able to close the window without closing the tool we must
+          // indentify it is an external close, which we do by the lack of disableOnClose as we always set that to true
+          // when we actively closes ourself in toggleMultiSelection(). Then we have to dispatch a new event that sets us
+          // to active as featureInfo becomes active when the event.active= false for any name, and that has already happened
+          // as featureInfo subscribed to the event before us.
+
+          // Remove interactions as the new event will trigger addition of them again
+          removeInteractions();
+
+          // Deactivte featureInfo and activate ourselves again
+          const newdetail = {
+            name: 'multiselection',
+            disableOnClose: true,
+            active: true
+          };
+          viewer.dispatch('toggleClickInteraction', newdetail);
         } else {
           disableInteraction();
         }
