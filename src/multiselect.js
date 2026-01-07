@@ -67,7 +67,8 @@ const Multiselect = function Multiselect(options = {}) {
   const showAddToSelectionButton = options.showAddToSelectionButton === true;
   let addToSelection = options.addToSelection !== false;
   const warnOnNoHits = options.warnOnNoHits === true;
-  const stayActiveOnClose = options.stayActiveOnClose === true;
+  /** Option to close tool when window is closed. */
+  const disableOnClose = options.disableOnClose === true; // Default to false as that was the behaviour before it became an option
   /**
    * True if origo exposes spinner. Older origo versions don't expose it. In that case we don't do anything.
    */
@@ -1249,12 +1250,12 @@ const Multiselect = function Multiselect(options = {}) {
       viewer.on('toggleClickInteraction', (detail) => {
         if (detail.name === 'multiselection' && detail.active) {
           enableInteraction(detail.keepActiveTool);
-        } else if (detail.name === 'multiselection' && detail.active === false && detail.fromSelf !== true && isActive && stayActiveOnClose) {
-          // We get here when infowindow is closed as it sends 'multiselection' and active=false but does not send any
-          // fromSelf. This is most likely an unintentional behaviour. InfoWindow should probably send 'featureInfo' as
+        } else if (detail.name === 'multiselection' && detail.active === false && detail.fromSelf !== true && isActive && !disableOnClose) {
+          // We get here when infowindow is closed as it sends 'multiselection' and active=false
+          //  This is most likely an unintentional behaviour. InfoWindow should probably send 'featureInfo' as
           // name, but it wasn't changed when it was decided that infowindow and selectionmanager was left in the core but
           // multiselect was broken out. Anyhow, if we want to be able to close the window without closing the tool we must
-          // indentify it is an external close, which we do by the lack of disableOnClose as we always set that to true
+          // indentify it is an external close, which we do by the lack of fromSelf as we always set that to true
           // when we actively closes ourself in toggleMultiSelection(). Then we have to dispatch a new event that sets us
           // to active as featureInfo becomes active when the event.active= false for any name, and that has already happened
           // as featureInfo subscribed to the event before us.
