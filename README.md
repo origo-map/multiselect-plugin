@@ -57,6 +57,7 @@ Property | Description | Default value
 --- | --- | ---
 tools | Which tools are available. Array of ['click', 'box', 'circle', 'polygon', 'buffer', 'line']. | All
 default | Which tool is default (string) | 'click'
+disableOnClose | If the tool should become inactive when closing the result window, i.e make featureInfo the active tool. | `false`
 lineBufferFactor | How much a line should be buffered before intersecting (pixels) | 1
 selectableLayers | Array of available layerConfigurations. If more than one layerConfiguration is present, a configuration selector tool is available. | All visible
 currentLayerConfig | Index of the selected layerConfiguration at startup | 0

@@ -67,6 +67,8 @@ const Multiselect = function Multiselect(options = {}) {
   const showAddToSelectionButton = options.showAddToSelectionButton === true;
   let addToSelection = options.addToSelection !== false;
   const warnOnNoHits = options.warnOnNoHits === true;
+  /** Option to close tool when window is closed. */
+  const disableOnClose = options.disableOnClose === true; // Default to false as that was the behaviour before it became an option
   /**
    * True if origo exposes spinner. Older origo versions don't expose it. In that case we don't do anything.
    */
@@ -83,7 +85,7 @@ const Multiselect = function Multiselect(options = {}) {
   function toggleMultiselection() {
     const detail = {
       name: 'multiselection',
-      disableOnClose: true,
+      fromSelf: true,
       active: !isActive
     };
     viewer.dispatch('toggleClickInteraction', detail);
@@ -1021,7 +1023,7 @@ const Multiselect = function Multiselect(options = {}) {
     lineInteraction.on('drawend', fetchFeaturesLineString);
   }
 
-  function enableInteraction() {
+  function enableInteraction(keepActiveTool) {
     document.getElementById(multiselectButton.getId()).classList.add('active');
     // This accidently unhides the multselect button. But that's OK.
     buttons.forEach((currButton) => {
@@ -1030,7 +1032,8 @@ const Multiselect = function Multiselect(options = {}) {
     document.getElementById(multiselectButton.getId()).classList.remove('tooltip');
     setActive(true);
     addInteractions();
-    document.getElementById(defaultButton.getId()).click();
+    const toolToActivate = keepActiveTool ? activeButton : defaultButton;
+    document.getElementById(toolToActivate.getId()).click();
     // if features are added to selection managaer from featureinfo, this will clear that selection when activating multiselect.
     // selectionManager.clearSelection();
   }
@@ -1246,9 +1249,29 @@ const Multiselect = function Multiselect(options = {}) {
 
       viewer.on('toggleClickInteraction', (detail) => {
         if (detail.name === 'multiselection' && detail.active) {
-          enableInteraction();
-        } else if (detail.name === 'multiselection' && detail.active === false && detail.disableOnClose !== true) {
-          // DO NOTHING!
+          enableInteraction(detail.keepActiveTool);
+        } else if (detail.name === 'multiselection' && detail.active === false && detail.fromSelf !== true && isActive && !disableOnClose) {
+          // We get here when infowindow is closed as it sends 'multiselection' and active=false
+          //  This is most likely an unintentional behaviour. InfoWindow should probably send 'featureInfo' as
+          // name, but it wasn't changed when it was decided that infowindow and selectionmanager was left in the core but
+          // multiselect was broken out. Anyhow, if we want to be able to close the window without closing the tool we must
+          // indentify it is an external close, which we do by the lack of fromSelf as we always set that to true
+          // when we actively closes ourself in toggleMultiSelection(). Then we have to dispatch a new event that sets us
+          // to active as featureInfo becomes active when the event.active= false for any name, and that has already happened
+          // as featureInfo subscribed to the event before us.
+
+          // Remove interactions as the new event will trigger addition of them again
+          // We could call disableInteraction, but that would close and open the menu which could cause flickering
+          // reset active tool
+          removeInteractions();
+          clearSelection();
+          // Deactivte featureInfo and activate ourselves again
+          const newdetail = {
+            name: 'multiselection',
+            keepActiveTool: true,
+            active: true
+          };
+          viewer.dispatch('toggleClickInteraction', newdetail);
         } else {
           disableInteraction();
         }
