@@ -4,9 +4,12 @@
   "description": "",
   "main": "./multiselect.js",
   "scripts": {
-    "start": "npm run watch-js",
+    "start": "npm-run-all --parallel watch-js watch-sass",
     "watch-js": "webpack-dev-server --config ./tasks/webpack.dev.js --mode development",
-    "build": "webpack --config ./tasks/webpack.prod.js"
+    "watch-sass": "sass -w --load-path scss scss/multiselect.scss ../origo/plugins/multiselect.css",
+    "build-sass": "sass scss/multiselect.scss build/css/multiselect.css",
+    "prewatch-sass": "sass scss/multiselect.scss ../origo/plugins/multiselect.css",
+    "build": "webpack --config ./tasks/webpack.prod.js && npm run build-sass"
   },
   "author": "",
   "license": "MIT",
@@ -14,13 +17,17 @@
     "@turf/boolean-disjoint": "^6.0.2",
     "@turf/buffer": "^6.5.0",
     "@turf/helpers": "^6.5.0",
-    "@turf/meta": "^6.5.0"
+    "@turf/meta": "^6.5.0",
+    "npm-run-all2": "^6.1.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "compression-webpack-plugin": "^10.0.0",
     "eslint": "^8.56.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",
+    "mini-css-extract-plugin": "^2.10.0",
+    "sass-embedded": "^1.86.3",
     "webpack": "^5.99.5",
     "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^6.0.1",

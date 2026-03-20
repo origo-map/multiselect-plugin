@@ -6,12 +6,27 @@ module.exports = merge(common, {
     path: `${__dirname}/../../origo/plugins`,
     publicPath: '/build/js',
     filename: 'multiselect.js',
-    libraryTarget: 'var',
+    libraryTarget: 'umd',
     libraryExport: 'default',
-    library: 'Multiselect'
+    library: 'Multiselect',
+    globalObject: 'this'
   },
   mode: 'development',
-  module: {},
+  module: {
+    rules: [{
+      test: /\.scss$/,
+      use: [{
+        loader: 'style-loader'
+      },
+      {
+        loader: 'css-loader'
+      },
+      {
+        loader: 'sass-loader'
+      }
+      ]
+    }]
+  },
 
   devServer: {
     static: './',

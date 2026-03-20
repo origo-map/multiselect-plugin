@@ -1,0 +1,53 @@
+@use 'variables' as vars;
+
+/* Export panel (infowindow-like): avoid clipping buttons; content can grow.
+   !important used to override Origo's .o-ui font-size and related base styles. */
+.o-multiselect-infowindow-panel {
+    overflow: visible;
+    font-size: 12px !important;
+}
+.o-multiselect-infowindow-panel .o-multiselect-infowindow-content {
+    overflow: visible;
+    max-height: none;
+    padding: 0.5rem;
+    padding-bottom: 0.75rem; /* room for action buttons */
+    font-size: 12px !important;
+}
+.o-multiselect-infowindow-panel .o-multiselect-infowindow-content .flex.column {
+    min-height: 0; /* allow flex to size to content */
+}
+
+/* Override .o-ui label inside export modal */
+.o-multiselect-infowindow-panel label {
+    font-size: 12px !important;
+    font-weight: normal !important;
+    line-height: 1.5 !important;
+}
+
+/* Make o-button usable as text button in flex rows */
+.o-multiselect-button-wide {
+    border: 1px solid vars.$o-btn-color !important;
+}
+
+/* Blue/primary */
+.o-multiselect-button-primary {
+    background-color: vars.$o-btn-active-color !important;
+    color: vars.$o-btn-bg;
+}
+
+.o-multiselect-flex-1 {
+    flex: 1;
+}
+
+.o-multiselect-flex-gap-sm {
+    gap: .5rem;
+}
+
+/* Scrollable list when many properties */
+.o-multiselect-export-props-list {
+    max-height: 12rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    font-size: 12px !important;
+    font-weight: normal !important;
+}
