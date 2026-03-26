@@ -64,7 +64,11 @@ The optional argument to Multiselect is an object which can have the following p
 | pointBufferFactor  | How much a point should be buffered before intersecting when using click tool. Does not apply if active configuration is "All visible", as that uses featureInfo hitTolerance setting. | 1                       |
 | bufferSymbol       | Name of a symbol in origo configuration to use as symbol for buffered objects. Symbol is always a polygon.                                                                             | A built-in symbol       |
 | chooseSymbol       | Name of a symbol in origo configuration to use as symbol for highlighted features when choosing which feature to buffer. Symbol should handle point, line and polygon.                 | A built-in symbol       |
-| warnOnNoHits       | Whether an alert should be displayed when no features to select are found.                                                                                                             | `false`                 |                                                                                                                                           | `true`                  |
+| warnOnNoHits       | Whether an alert should be displayed when no features to select are found.                                                                                                             | `false`                 |
+| showExportButton   | Show a button to export the selection (GeoJSON, CSV, Excel).                                                                                                                           | `false`                 |
+| exportFormats      | Which export formats to offer. Array of `'geojson'`, `'csv'`, `'excel'`.                                                                                                               | All three               |
+| exportFilename     | Base filename for exported files (extension added automatically). Invalid path characters are stripped.                                                                                | `'selected-features'`   |
+| csvIncludeWkt      | Include a WKT geometry column in CSV export.                                                                                                                                           | `true`                  |
 
 #### layerConfiguration
 A layerConfiguration specifies in which layers features are selected. The default behaviour is to select features in all currently visible
@@ -110,5 +114,4 @@ const selectableLayers = [
 - WMS layers are supported if there is a WFS endpoint at the same URL as the WMS source. 
 - WMS layers must have same default SRS as the map
 - WFS layers must have the same default SRS as the map if using bbox strategy and a layerConfiguration that uses the layer property.
-- When using the default All visible configuration and WFS layers are using bbox strategy and and selecting with a larger object than visible on the screen (e.g. using a big buffer), objects outside the screen are not selected if they haven't been read before in another extent. 
-
+- When using the default All visible configuration and WFS layers are using bbox strategy and and selecting with a larger object than visible on the screen (e.g. using a big buffer), objects outside the screen are not selected if they haven't been read before in another extent.

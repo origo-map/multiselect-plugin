@@ -3,6 +3,7 @@ import buffer from '@turf/buffer';
 import disjoint from '@turf/boolean-disjoint';
 import { geometryCollection } from '@turf/helpers';
 import { featureEach } from '@turf/meta';
+import { utils as xlsxUtils, write as xlsxWrite } from 'xlsx';
 import * as defaultstyles from './defaultstyles';
 
 const Multiselect = function Multiselect(options = {}) {
@@ -64,6 +65,13 @@ const Multiselect = function Multiselect(options = {}) {
   const useWMSFeatureInfo = options.WMSHandling && options.WMSHandling.source === 'WMS';
   const alternativeLayerConfiguration = options.alternativeLayers || [];
   const showClearButton = options.showClearButton === true;
+  const showExportButton = options.showExportButton === true;
+  const allowedFormats = ['geojson', 'csv', 'excel'];
+  const exportFormats = Array.isArray(options.exportFormats) && options.exportFormats.length > 0
+    ? options.exportFormats.map((f) => String(f).toLowerCase()).filter((f) => allowedFormats.includes(f))
+    : [...allowedFormats];
+  const exportFilenameBase = (options.exportFilename != null ? String(options.exportFilename).trim().replace(/[/\\?*:|"]/g, '') : '') || 'selected-features';
+  const csvIncludeWkt = options.csvIncludeWkt !== false;
   const showAddToSelectionButton = options.showAddToSelectionButton === true;
   let addToSelection = options.addToSelection !== false;
   const warnOnNoHits = options.warnOnNoHits === true;
@@ -77,6 +85,121 @@ const Multiselect = function Multiselect(options = {}) {
    * Handle that spinner uses to cancel a pending spinner. There can be only one spinner at any given time as it is modal.
    */
   let timerId = 0;
+
+  let infowindowPanelIdCounter = 0;
+
+  /**
+   * Makes an element draggable by its header (element with id {elementId}-draggable) or the element itself.
+   * Mirrors Origo infowindow behaviour.
+   * @param {HTMLElement} elmnt - The container element to move
+   */
+  function makeElementDraggable(elmnt) {
+    let pos1 = 0;
+    let pos2 = 0;
+    let pos3 = 0;
+    let pos4 = 0;
+
+    function elementDrag(evt) {
+      const e = evt || window.event;
+      e.preventDefault();
+      pos1 = pos3 - e.clientX;
+      pos2 = pos4 - e.clientY;
+      pos3 = e.clientX;
+      pos4 = e.clientY;
+      elmnt.style.top = `${elmnt.offsetTop - pos2}px`;
+      elmnt.style.left = `${elmnt.offsetLeft - pos1}px`;
+    }
+
+    function closeDragElement() {
+      document.onmouseup = null;
+      document.onmousemove = null;
+    }
+
+    function dragMouseDown(evt) {
+      const e = evt || window.event;
+      e.preventDefault();
+      pos3 = e.clientX;
+      pos4 = e.clientY;
+      document.onmouseup = closeDragElement;
+      document.onmousemove = elementDrag;
+    }
+
+    const header = document.getElementById(`${elmnt.id}-draggable`);
+    if (header) {
+      header.onmousedown = dragMouseDown;
+    } else {
+      elmnt.onmousedown = dragMouseDown;
+    }
+  }
+
+  /**
+   * Creates a draggable panel with title and content (no header buttons; close via content e.g. Avbryt).
+   * @param {Object} opts
+   * @param {string} opts.targetId - Id of the parent element (e.g. viewer id)
+   * @param {string} opts.title - Title text in the header
+   * @param {string} opts.content - HTML string for the body
+   * @param {function} [opts.onClose] - Called when the panel is closed
+   * @returns {{ closeModal: function, getContentContainer: function }}
+   */
+  function createInfowindowLikePanel(opts) {
+    const targetId = opts.targetId;
+    const title = opts.title || '';
+    const content = opts.content || '';
+    const onClose = opts.onClose || (() => {});
+
+    const panelId = `o-multiselect-panel-${infowindowPanelIdCounter += 1}`;
+
+    const mainContainer = document.createElement('div');
+    mainContainer.id = panelId;
+    mainContainer.classList.add('sidebarcontainer', 'o-multiselect-infowindow-panel');
+    mainContainer.style.position = 'absolute';
+    mainContainer.style.zIndex = '1000';
+    mainContainer.style.minWidth = '280px';
+    mainContainer.style.maxWidth = '90vw';
+
+    const urvalContainer = document.createElement('div');
+    urvalContainer.classList.add('urvalcontainer');
+    urvalContainer.id = `${panelId}-draggable`;
+
+    const urvalTextNodeContainer = document.createElement('div');
+    urvalTextNodeContainer.classList.add('urval-textnode-container');
+    urvalTextNodeContainer.appendChild(document.createTextNode(title));
+    urvalContainer.appendChild(urvalTextNodeContainer);
+
+    const contentContainer = document.createElement('div');
+    contentContainer.classList.add('o-multiselect-infowindow-content');
+    contentContainer.innerHTML = content;
+
+    mainContainer.appendChild(urvalContainer);
+    mainContainer.appendChild(contentContainer);
+
+    makeElementDraggable(mainContainer);
+
+    const parent = document.getElementById(targetId);
+    if (parent) {
+      parent.appendChild(mainContainer);
+      // Center modal in viewer
+      const parentWidth = parent.offsetWidth || parent.clientWidth;
+      const parentHeight = parent.offsetHeight || parent.clientHeight;
+      const panelWidth = mainContainer.offsetWidth;
+      const panelHeight = mainContainer.offsetHeight;
+      mainContainer.style.top = `${Math.max(0, (parentHeight - panelHeight) / 2)}px`;
+      mainContainer.style.left = `${Math.max(0, (parentWidth - panelWidth) / 2)}px`;
+    }
+
+    function closeModal() {
+      if (mainContainer.parentElement) {
+        mainContainer.parentElement.removeChild(mainContainer);
+      }
+      onClose();
+    }
+
+    function getContentContainer() {
+      return contentContainer;
+    }
+
+    return { closeModal, getContentContainer };
+  }
 
   function setActive(state) {
     isActive = state;
@@ -96,6 +219,315 @@ const Multiselect = function Multiselect(options = {}) {
    * */
   function hasSelection() {
     return selectionManager.getSelectedItems().getLength() > 0 || featureInfo.getSelectionLayer().getSource().getFeatures().length > 0;
+  }
+
+  /**
+   * Returns all currently selected features as an array of OpenLayers features.
+   * Converts Circle geometries to Polygon for export compatibility.
+   * @returns {Origo.ol.Feature[]}
+   */
+  function getSelectedFeatures() {
+    const features = [];
+    const projection = map.getView().getProjection();
+
+    const fromSelectionLayer = featureInfo.getSelectionLayer().getSource().getFeatures();
+    fromSelectionLayer.forEach((f) => {
+      const clone = f.clone();
+      let geom = clone.getGeometry();
+      if (geom.getType() === 'Circle') {
+        geom = Origo.ol.geom.Polygon.fromCircle(geom);
+        clone.setGeometry(geom);
+      }
+      features.push(clone);
+    });
+
+    const selectedItems = selectionManager.getSelectedItems().getArray();
+    selectedItems.forEach((item) => {
+      const f = item.getFeature().clone();
+      let geom = f.getGeometry();
+      if (geom.getType() === 'Circle') {
+        geom = Origo.ol.geom.Polygon.fromCircle(geom);
+        f.setGeometry(geom);
+      }
+      features.push(f);
+    });
+
+    return features;
+  }
+
+  /**
+   * Opens a modal for the user to choose export format (GeoJSON, CSV, Excel), properties to include, then runs the export.
+   */
+  function showExportModal() {
+    if (!hasSelection()) {
+      return;
+    }
+    const features = getSelectedFeatures();
+    const attributeNames = getAttributeNames(features);
+
+    const formId = 'o-multiselect-export-form';
+    const wktRowId = 'o-multiselect-export-csv-wkt-row';
+    const propsListId = 'export-props-list';
+    const title = 'Exportera urval';
+    const formatLabels = { geojson: 'GeoJSON', csv: 'CSV', excel: 'Excel' };
+    const formatRadiosHtml = exportFormats.map((f, i) => {
+      const sep = i < exportFormats.length - 1 ? ' padding-right' : '';
+      const checked = i === 0 ? ' checked' : '';
+      return `<label class="inline${sep}"><input type="radio" name="export-format" value="${f}" id="export-format-${f}"${checked}> ${formatLabels[f] || f}</label>`;
+    }).join('\n          ');
+    const content = `
+      <div id="${formId}" class="flex column padding-small">
+        <div class="padding-bottom-small">
+          ${formatRadiosHtml}
+        </div>
+        <div id="${wktRowId}" class="padding-bottom-small hidden">
+          <label>
+            <input type="checkbox" id="export-csv-include-wkt" ${csvIncludeWkt ? 'checked' : ''}>
+            Inkludera geometri som WKT
+          </label>
+        </div>
+        <div class="padding-bottom-small">
+          <div class="flex row padding-bottom-smaller o-multiselect-flex-gap-sm">
+            <button type="button" id="export-props-select-all" class="o-button o-multiselect-button-wide o-multiselect-flex-1">Välj alla</button>
+            <button type="button" id="export-props-deselect-all" class="o-button o-multiselect-button-wide o-multiselect-flex-1">Avmarkera alla</button>
+          </div>
+          <div id="${propsListId}" class="o-multiselect-export-props-list padding-top-smaller"></div>
+        </div>
+        <div class="flex row justify-end padding-top-small o-multiselect-flex-gap-sm">
+          <button type="button" id="export-modal-cancel-btn" class="o-button o-multiselect-button-wide o-multiselect-flex-1">Avbryt</button>
+          <button type="button" id="export-modal-export-btn" class="o-button o-multiselect-button-wide o-multiselect-button-primary o-multiselect-flex-1">Exportera</button>
+        </div>
+      </div>`;
+
+    const modal = createInfowindowLikePanel({
+      targetId: viewer.getId(),
+      title,
+      content
+    });
+
+    const propsListEl = document.getElementById(propsListId);
+    attributeNames.forEach((name) => {
+      const label = document.createElement('label');
+      label.className = 'block padding-bottom-smaller';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.name = 'export-prop';
+      input.value = name;
+      input.checked = true;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(` ${name}`));
+      propsListEl.appendChild(label);
+    });
+
+    document.getElementById('export-props-select-all').addEventListener('click', () => {
+      propsListEl.querySelectorAll('input[name="export-prop"]').forEach((cb) => { cb.checked = true; });
+    });
+    document.getElementById('export-props-deselect-all').addEventListener('click', () => {
+      propsListEl.querySelectorAll('input[name="export-prop"]').forEach((cb) => { cb.checked = false; });
+    });
+
+    const wktRowEl = document.getElementById(wktRowId);
+
+    function toggleWktRow() {
+      const formatCsvEl = document.getElementById('export-format-csv');
+      const showWkt = formatCsvEl?.checked || false;
+      if (showWkt) {
+        wktRowEl.classList.remove('hidden');
+      } else {
+        wktRowEl.classList.add('hidden');
+      }
+    }
+
+    exportFormats.forEach((f) => {
+      const el = document.getElementById(`export-format-${f}`);
+      if (el) el.addEventListener('change', toggleWktRow);
+    });
+    toggleWktRow();
+
+    document.getElementById('export-modal-export-btn').addEventListener('click', () => {
+      const selectedFormat = document.querySelector(`#${formId} input[name="export-format"]:checked`)?.value;
+      const includeWkt = selectedFormat === 'csv' && document.getElementById('export-csv-include-wkt').checked;
+      const selectedProps = Array.from(propsListEl.querySelectorAll('input[name="export-prop"]:checked')).map((cb) => cb.value);
+      const props = selectedProps.length > 0 ? selectedProps : null;
+      modal.closeModal();
+      if (selectedFormat === 'csv') {
+        exportToCSV(includeWkt, props);
+      } else if (selectedFormat === 'excel') {
+        exportToExcel(props);
+      } else {
+        exportToGeoJSON(props);
+      }
+    });
+
+    document.getElementById('export-modal-cancel-btn').addEventListener('click', () => {
+      modal.closeModal();
+    });
+  }
+
+  /**
+   * Exports selected features as GeoJSON and triggers a file download.
+   * @param {string[]|null} attributeNames - If provided, only these properties are included in each feature. Null = all properties.
+   */
+  function exportToGeoJSON(attributeNames) {
+    const features = getSelectedFeatures();
+    if (features.length === 0) {
+      return;
+    }
+    const projection = map.getView().getProjection();
+    let featuresToWrite = features;
+    if (attributeNames && attributeNames.length > 0) {
+      const nameSet = new Set(attributeNames);
+      featuresToWrite = features.map((f) => {
+        const clone = f.clone();
+        const props = clone.getProperties();
+        Object.keys(props).forEach((key) => {
+          if (key !== 'geometry' && !nameSet.has(key)) {
+            clone.unset(key);
+          }
+        });
+        return clone;
+      });
+    }
+    const format = new Origo.ol.format.GeoJSON();
+    const geojsonStr = format.writeFeatures(featuresToWrite, {
+      featureProjection: projection,
+      dataProjection: 'EPSG:4326'
+    });
+    const blob = new Blob([geojsonStr], { type: 'application/geo+json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${exportFilenameBase}.geojson`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Returns unique attribute names from all features (excluding geometry).
+   * Order: first occurrence across features.
+   * @param {Origo.ol.Feature[]} features
+   * @returns {string[]}
+   */
+  function getAttributeNames(features) {
+    const seen = new Set();
+    const names = [];
+    features.forEach((f) => {
+      const props = f.getProperties();
+      Object.keys(props).forEach((key) => {
+        if (key === 'geometry' || props[key] instanceof Origo.ol.geom.Geometry) {
+          return;
+        }
+        if (!seen.has(key)) {
+          seen.add(key);
+          names.push(key);
+        }
+      });
+    });
+    return names;
+  }
+
+  /**
+   * Writes geometry as WKT in EPSG:4326.
+   * @param {Origo.ol.geom.Geometry} geometry
+   * @param {string} projection
+   * @returns {string}
+   */
+  function geometryToWkt(geometry, projection) {
+    const wktFormat = new Origo.ol.format.WKT();
+    const clone = geometry.clone();
+    clone.transform(projection, 'EPSG:4326');
+    return wktFormat.writeGeometry(clone);
+  }
+
+  /**
+   * Escapes a value for CSV: wraps in double quotes when value contains comma, newline or double quote,
+   * and doubles any internal double quotes per RFC 4180.
+   * @param {*} value
+   * @returns {string}
+   */
+  function escapeCsvValue(value) {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    const str = String(value);
+    const needsQuoting = /[",\r\n]/.test(str);
+    const escaped = str.replace(/"/g, '""');
+    return needsQuoting ? `"${escaped}"` : escaped;
+  }
+
+  /**
+   * Exports selected features as CSV. Optionally includes geometry as WKT column.
+   * @param {boolean} includeWkt
+   * @param {string[]|null} attributeNames - If provided, only these columns are included. Null = all attributes.
+   */
+  function exportToCSV(includeWkt, attributeNames) {
+    const features = getSelectedFeatures();
+    if (features.length === 0) {
+      return;
+    }
+    const projection = map.getView().getProjection();
+    const attrNames = attributeNames && attributeNames.length > 0
+      ? attributeNames
+      : getAttributeNames(features);
+    const headers = includeWkt ? [...attrNames, 'wkt'] : attrNames;
+    const headerRow = headers.map((h) => escapeCsvValue(h)).join(',');
+    const rows = [headerRow];
+
+    features.forEach((feature) => {
+      const props = feature.getProperties();
+      const cells = attrNames.map((name) => escapeCsvValue(props[name]));
+      if (includeWkt) {
+        const geom = feature.getGeometry();
+        cells.push(escapeCsvValue(geom ? geometryToWkt(geom, projection) : ''));
+      }
+      rows.push(cells.join(','));
+    });
+
+    const csvStr = rows.join('\r\n');
+    const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${exportFilenameBase}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Exports selected features as Excel (.xlsx). Only attribute columns are included (no geometry/WKT).
+   * @param {string[]|null} attributeNames - If provided, only these columns are included. Null = all attributes.
+   */
+  function exportToExcel(attributeNames) {
+    const features = getSelectedFeatures();
+    if (features.length === 0) {
+      return;
+    }
+    const attrNames = attributeNames && attributeNames.length > 0
+      ? attributeNames
+      : getAttributeNames(features);
+    const headers = [...attrNames];
+    const rows = [headers];
+
+    features.forEach((feature) => {
+      const props = feature.getProperties();
+      const cells = attrNames.map((name) => {
+        const v = props[name];
+        return v === null || v === undefined ? '' : v;
+      });
+      rows.push(cells);
+    });
+
+    const ws = xlsxUtils.aoa_to_sheet(rows);
+    const wb = xlsxUtils.book_new();
+    xlsxUtils.book_append_sheet(wb, ws, 'Data');
+    const xlsxData = xlsxWrite(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([xlsxData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${exportFilenameBase}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function displayTemporaryFeature(feature, style) {
@@ -1211,6 +1643,19 @@ const Multiselect = function Multiselect(options = {}) {
             tooltipPlacement: 'east'
           });
           buttons.push(clearButton);
+        }
+
+        if (showExportButton) {
+          const exportButton = Origo.ui.Button({
+            cls: 'o-multiselect-export padding-small margin-bottom-smaller icon-smaller round light box-shadow hidden',
+            click() {
+              showExportModal();
+            },
+            icon: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+            tooltipText: 'Exportera urval',
+            tooltipPlacement: 'east'
+          });
+          buttons.push(exportButton);
         }
 
         if (defaultTool === 'click') {
